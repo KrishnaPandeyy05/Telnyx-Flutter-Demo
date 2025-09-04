@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "890022321677",
+    "project_id": "telnyx-call-demo",
+    "storage_bucket": "telnyx-call-demo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:890022321677:android:b03cdb81e050b20ab33f44",
+        "android_client_info": {
+          "package_name": "com.example.telnyx_fresh_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3fGne4VnJv0HvIOvYOKhtSKAetJrnn6U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
