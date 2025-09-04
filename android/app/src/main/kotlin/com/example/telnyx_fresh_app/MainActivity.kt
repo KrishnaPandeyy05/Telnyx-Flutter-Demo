@@ -38,8 +38,9 @@ class MainActivity : FlutterActivity() {
                 Log.d(TAG, "Processing ${extras.size()} extras from intent")
                 for (key in extras.keySet()) {
                     val value = extras.get(key)
-                    extrasMap[key] = value
-                    Log.d(TAG, "📋 Extra: $key = $value (${value?.javaClass?.simpleName})")
+                    val flutterCompatibleValue = convertToFlutterCompatible(value)
+                    extrasMap[key] = flutterCompatibleValue
+                    Log.d(TAG, "📋 Extra: $key = $value (${value?.javaClass?.simpleName}) -> $flutterCompatibleValue")
                 }
             } else {
                 Log.d(TAG, "⚠️ No extras found in CallKit intent")
@@ -89,6 +90,34 @@ class MainActivity : FlutterActivity() {
             android.os.Handler(mainLooper).postDelayed({
                 sendToFlutter(arguments)
             }, 500)
+        }
+    }
+    
+    private fun convertToFlutterCompatible(value: Any?): Any? {
+        return when (value) {
+            null -> null
+            is String, is Int, is Long, is Double, is Float, is Boolean -> value
+            is Bundle -> {
+                // Convert Bundle to Map
+                val bundleMap = mutableMapOf<String, Any?>()
+                for (key in value.keySet()) {
+                    bundleMap[key] = convertToFlutterCompatible(value.get(key))
+                }
+                bundleMap
+            }
+            is ArrayList<*> -> {
+                // Convert ArrayList to List
+                value.map { convertToFlutterCompatible(it) }
+            }
+            is Array<*> -> {
+                // Convert Array to List
+                value.map { convertToFlutterCompatible(it) }
+            }
+            else -> {
+                // For any other complex type, convert to string representation
+                Log.w(TAG, "Converting unsupported type ${value.javaClass.simpleName} to String: $value")
+                value.toString()
+            }
         }
     }
 }
