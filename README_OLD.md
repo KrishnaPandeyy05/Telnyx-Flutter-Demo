@@ -38,8 +38,8 @@ A comprehensive Flutter application demonstrating WebRTC calling functionality u
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/KrishnaPandeyy05/Telnyx-Flutter-Demo.git
-   cd Telnyx-Flutter-Demo
+   git clone <your-repo-url>
+   cd telnyx_fresh_app
    ```
 
 2. **Install dependencies**
@@ -48,7 +48,7 @@ A comprehensive Flutter application demonstrating WebRTC calling functionality u
    ```
 
 3. **Firebase Configuration**
-   - Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
+   - Create a Firebase project
    - Add your Android/iOS apps to Firebase
    - Download `google-services.json` (Android) and `GoogleService-Info.plist` (iOS)
    - Place them in the appropriate directories:
@@ -56,8 +56,8 @@ A comprehensive Flutter application demonstrating WebRTC calling functionality u
      - iOS: `ios/Runner/GoogleService-Info.plist`
 
 4. **Telnyx Configuration**
-   - Sign up for a [Telnyx account](https://telnyx.com)
-   - Get your WebRTC credentials from the Telnyx Portal
+   - Sign up for a Telnyx account
+   - Get your WebRTC credentials
    - Update the credentials in your app configuration
 
 5. **Run the app**
@@ -128,9 +128,9 @@ java.lang.IllegalArgumentException: Unsupported value: 'Bundle[mParcelledData.da
 - Complex objects fallback to string representation
 
 ### CallKit State Management
-- ✅ Fixed killed state call acceptance
-- ✅ Improved background state UI navigation
-- ✅ Enhanced method channel reliability
+- Fixed killed state call acceptance
+- Improved background state UI navigation
+- Enhanced method channel reliability
 
 ## 🧪 Testing
 
@@ -143,11 +143,11 @@ java.lang.IllegalArgumentException: Unsupported value: 'Bundle[mParcelledData.da
    ```
 
 2. **Test Scenarios**
-   - ✅ Incoming call when app is in foreground
-   - ✅ Incoming call when app is in background
-   - ✅ Incoming call when app is killed
-   - ✅ Call acceptance from notification
-   - ✅ Call rejection from notification
+   - Incoming call when app is in foreground
+   - Incoming call when app is in background
+   - Incoming call when app is killed
+   - Call acceptance from notification
+   - Call rejection from notification
 
 3. **Debug Logs**
    ```bash
@@ -215,7 +215,7 @@ adb logcat | grep -i firebase
 ## 📚 Dependencies
 
 | Package | Version | Purpose |
-|---------|---------|---------|
+|---------|---------|----------|
 | telnyx_webrtc | ^3.0.0 | WebRTC calling functionality |
 | firebase_core | ^3.3.0 | Firebase initialization |
 | firebase_messaging | ^15.0.4 | Push notifications |

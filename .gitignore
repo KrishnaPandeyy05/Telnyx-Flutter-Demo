@@ -43,3 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# APK files
+*.apk
+*.aab
+*.ipa
+
+# Large files that shouldn't be in git
+*.zip
+*.tar.gz
+*.dmg
+*.pkg
