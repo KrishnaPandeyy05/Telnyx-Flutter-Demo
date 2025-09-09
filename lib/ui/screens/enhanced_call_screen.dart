@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../main.dart' show TelnyxService, globalCallKitCallInfo;
+import '../../services/telnyx_voip_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/call_timer_widget.dart';
 import '../widgets/call_control_button.dart';
@@ -93,48 +93,104 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
 
   @override
   Widget build(BuildContext context) {
-    final telnyxService = context.watch<TelnyxService>();
-    
     return Scaffold(
-      body: AnimatedBuilder(
-        animation: _backgroundAnimation,
-        builder: (context, child) {
-          return Container(
-            decoration: _getBackgroundDecoration(),
-            child: SafeArea(
-              child: SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: MediaQuery.of(context).size.height - 
-                               MediaQuery.of(context).padding.top - 
-                               MediaQuery.of(context).padding.bottom,
-                  ),
-                  child: IntrinsicHeight(
-                    child: Column(
+      body: Consumer<TelnyxVoipService>(
+        builder: (context, service, child) {
+          final activeCall = service.activeCall;
+          final currentCalls = service.currentCalls;
+          
+          debugPrint('🔍 Enhanced Call Screen - Active call: $activeCall');
+          debugPrint('🔍 Enhanced Call Screen - Current calls: ${currentCalls.length}');
+          
+          // Try to use any available call if activeCall is null
+          final displayCall = activeCall ?? (currentCalls.isNotEmpty ? currentCalls.first : null);
+          
+          if (displayCall == null) {
+            return Container(
+              decoration: AppTheme.activeCallDecoration,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    // Back button
+                    Row(
                       children: [
-                        // Top section with caller info and timer
-                        Expanded(
-                          flex: 2,
-                          child: _buildCallerSection(telnyxService),
-                        ),
-                        
-                        // Audio waveform visualization
-                        Expanded(
-                          flex: 1,
-                          child: _buildWaveformSection(),
-                        ),
-                        
-                        // Call controls
-                        Expanded(
-                          flex: 2,
-                          child: _buildControlsSection(telnyxService),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                          iconSize: 24,
                         ),
                       ],
                     ),
-                  ),
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.call_end,
+                              size: 64,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Call ended',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            ElevatedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white.withOpacity(0.2),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Back to Home'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
+            );
+          }
+
+          return AnimatedBuilder(
+            animation: _backgroundAnimation,
+            builder: (context, child) {
+              return Container(
+                decoration: _getBackgroundDecoration(),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      // Top section with caller info and timer
+                      Expanded(
+                        flex: 2,
+                        child: _buildCallerSection(displayCall),
+                      ),
+                      
+                      // Audio waveform visualization
+                      const Expanded(
+                        flex: 1,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 40),
+                          child: AudioWaveformWidget(),
+                        ),
+                      ),
+                      
+                      // Call controls
+                      Expanded(
+                        flex: 2,
+                        child: _buildControlsSection(displayCall),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
@@ -169,7 +225,7 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
     );
   }
 
-  Widget _buildCallerSection(TelnyxService service) {
+  Widget _buildCallerSection(dynamic call) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       child: Column(
@@ -205,7 +261,7 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              _getCallStatusText(service),
+              _getCallStatusText(call),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
@@ -234,7 +290,7 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
               radius: 60,
               backgroundColor: Colors.white.withOpacity(0.2),
               child: Text(
-                _getCallerInitials(service),
+                _getCallerInitials(call),
                 style: const TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
@@ -248,7 +304,7 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
           
           // Caller name
           Text(
-            _getCallerDisplayName(service),
+            _getCallerDisplayName(call),
             style: AppTheme.callNameStyle,
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -264,14 +320,7 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
     );
   }
 
-  Widget _buildWaveformSection() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 40),
-      child: AudioWaveformWidget(),
-    );
-  }
-
-  Widget _buildControlsSection(TelnyxService service) {
+  Widget _buildControlsSection(dynamic call) {
     return SlideTransition(
       position: Tween<Offset>(
         begin: const Offset(0, 1),
@@ -281,19 +330,19 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            if (_showKeypad) _buildKeypad(service) else _buildMainControls(service),
+            if (_showKeypad) _buildKeypad(call) else _buildMainControls(call),
             
             const SizedBox(height: 20),
             
             // End call button
-            _buildEndCallButton(service),
+            _buildEndCallButton(call),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMainControls(TelnyxService service) {
+  Widget _buildMainControls(dynamic call) {
     return Column(
       children: [
         // First row of controls
@@ -306,7 +355,14 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
               activeColor: AppTheme.mutedGray,
               onPressed: () {
                 setState(() => _isMuted = !_isMuted);
-                service.toggleMute();
+                // Use the call's mute functionality directly
+                if (call != null) {
+                  try {
+                    call.onMuteUnmutePressed();
+                  } catch (e) {
+                    debugPrint('Error toggling mute: $e');
+                  }
+                }
                 HapticFeedback.lightImpact();
               },
               label: 'Mute',
@@ -328,7 +384,14 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
               activeColor: Colors.blue,
               onPressed: () {
                 setState(() => _isSpeakerOn = !_isSpeakerOn);
-                service.toggleSpeaker(_isSpeakerOn);
+                // Use the call's speaker functionality directly
+                if (call != null) {
+                  try {
+                    call.enableSpeakerPhone(_isSpeakerOn);
+                  } catch (e) {
+                    debugPrint('Error toggling speaker: $e');
+                  }
+                }
                 HapticFeedback.lightImpact();
               },
               label: 'Speaker',
@@ -357,7 +420,14 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
               activeColor: AppTheme.warningOrange,
               onPressed: () {
                 setState(() => _isOnHold = !_isOnHold);
-                service.toggleHold();
+                // Use the call's hold functionality directly
+                if (call != null) {
+                  try {
+                    call.onHoldUnholdPressed();
+                  } catch (e) {
+                    debugPrint('Error toggling hold: $e');
+                  }
+                }
                 HapticFeedback.lightImpact();
               },
               label: _isOnHold ? 'Resume' : 'Hold',
@@ -377,7 +447,7 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
     );
   }
 
-  Widget _buildKeypad(TelnyxService service) {
+  Widget _buildKeypad(dynamic call) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -418,7 +488,14 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
                 _KeypadButton(
                   text: tone,
                   onPressed: () {
-                    service.sendDTMF(tone);
+                    // Use the call's DTMF functionality directly
+                    if (call != null) {
+                      try {
+                        call.dtmf(tone);
+                      } catch (e) {
+                        debugPrint('Error sending DTMF: $e');
+                      }
+                    }
                     HapticFeedback.selectionClick();
                   },
                 ),
@@ -429,11 +506,19 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
     );
   }
 
-  Widget _buildEndCallButton(TelnyxService service) {
+  Widget _buildEndCallButton(dynamic call) {
     return GestureDetector(
       onTap: () {
         HapticFeedback.heavyImpact();
-        service.endCall();
+        // Use the call's end functionality directly
+        if (call != null) {
+          try {
+            call.endCall();
+          } catch (e) {
+            debugPrint('Error ending call: $e');
+          }
+        }
+        Navigator.of(context).pop();
       },
       child: Container(
         width: 80,
@@ -493,33 +578,35 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
     );
   }
 
-  String _getCallStatusText(TelnyxService service) {
+  String _getCallStatusText(dynamic call) {
     if (_isOnHold) return 'On Hold';
-    if (service.isCallInProgress) return 'Connected';
+    try {
+      if (call?.currentState.toString().contains('ACTIVE') == true) {
+        return 'Connected';
+      }
+    } catch (e) {
+      debugPrint('Error getting call state: $e');
+    }
     return 'Connecting...';
   }
 
-  String _getCallerDisplayName(TelnyxService service) {
-    // Priority 1: Global CallKit call info (for direct launch)
-    if (globalCallKitCallInfo != null) {
-      return globalCallKitCallInfo!['caller_name'] ?? 'CallKit Call';
+  String _getCallerDisplayName(dynamic call) {
+    try {
+      // Try to get the call destination or caller ID
+      if (call?.sessionDestinationNumber != null) {
+        return call.sessionDestinationNumber;
+      }
+      if (call?.callId != null) {
+        return call.callId;
+      }
+    } catch (e) {
+      debugPrint('Error getting caller display name: $e');
     }
-    
-    // Priority 2: Active call destination
-    if (service.call?.sessionDestinationNumber != null) {
-      return service.call!.sessionDestinationNumber;
-    }
-    
-    // Priority 3: Incoming call number
-    if (service.incomingInvite?.callerIdNumber != null) {
-      return service.incomingInvite!.callerIdNumber!;
-    }
-    
     return 'Unknown Caller';
   }
 
-  String _getCallerInitials(TelnyxService service) {
-    final name = _getCallerDisplayName(service);
+  String _getCallerInitials(dynamic call) {
+    final name = _getCallerDisplayName(call);
     final words = name.split(' ');
     if (words.isEmpty) return '?';
     if (words.length == 1) {

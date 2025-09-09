@@ -115,17 +115,28 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
         children: [
           // Incoming call label
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
+              color: Colors.black.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(25),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.6),
+                width: 2,
+              ),
             ),
             child: Text(
               widget.isVideo ? 'Incoming Video Call' : 'Incoming Call',
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                shadows: [
+                  Shadow(
+                    color: Colors.black,
+                    offset: Offset(1, 1),
+                    blurRadius: 2,
+                  ),
+                ],
               ),
             ),
           ),
@@ -178,7 +189,16 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
           // Caller name
           Text(
             widget.callerName,
-            style: AppTheme.callNameStyle.copyWith(fontSize: 32),
+            style: AppTheme.callNameStyle.copyWith(
+              fontSize: 32,
+              shadows: [
+                const Shadow(
+                  color: Colors.black,
+                  offset: Offset(1, 1),
+                  blurRadius: 3,
+                ),
+              ],
+            ),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -187,10 +207,26 @@ class _IncomingCallOverlayState extends State<IncomingCallOverlay>
           const SizedBox(height: 8),
           
           // Caller number
-          Text(
-            widget.callerNumber,
-            style: AppTheme.callStatusStyle.copyWith(fontSize: 18),
-            textAlign: TextAlign.center,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              widget.callerNumber,
+              style: AppTheme.callStatusStyle.copyWith(
+                fontSize: 18,
+                shadows: [
+                  const Shadow(
+                    color: Colors.black,
+                    offset: Offset(1, 1),
+                    blurRadius: 2,
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
         ],
       ),

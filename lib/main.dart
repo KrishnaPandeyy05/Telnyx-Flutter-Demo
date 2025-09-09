@@ -13,7 +13,10 @@ import 'package:flutter/services.dart';
 
 // Enhanced UI imports
 import 'ui/theme/app_theme.dart';
+import 'ui/screens/login_screen.dart';
+import 'ui/screens/enhanced_call_screen.dart';
 import 'services/telnyx_voip_service.dart';
+import 'services/credential_storage.dart';
 
 // Global navigator key
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -572,14 +575,17 @@ class _TelnyxAppState extends State<TelnyxApp> with WidgetsBindingObserver {
     final appTheme = _isKilledStateLaunch ? ThemeData.dark() : AppTheme.darkTheme;
     
     return MaterialApp(
-      title: 'Adit Telnyx',
+      title: 'Telnyx Softphone',
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       theme: appTheme,
       initialRoute: '/',
       routes: {
-        '/': (_) => const HomePage(),
-        '/call': (_) => const CallPage(),
+        '/': (_) => const SplashScreen(),
+        '/login': (_) => const LoginScreen(),
+        '/home': (_) => const HomePage(),
+        '/call': (_) => const EnhancedCallScreen(),
+        '/old-call': (_) => const CallPage(), // Keep old call page for fallback
       },
     );
   }
@@ -796,6 +802,16 @@ class _HomePageState extends State<HomePage> {
                         minimumSize: const Size(200, 36),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      onPressed: _logout,
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Logout'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey[700],
+                        minimumSize: const Size(200, 36),
+                      ),
+                    ),
                   ],
                 ),
                 
@@ -820,13 +836,24 @@ class _HomePageState extends State<HomePage> {
     if (destination.isEmpty) return;
     
     final service = Provider.of<TelnyxVoipService>(context, listen: false);
+    debugPrint('📞 Making call to: $destination');
     final call = await service.makeCall(destination: destination);
     
     if (call != null) {
       debugPrint('📞 Call initiated: ${call.callId}');
-      // Navigate to call screen
+      debugPrint('📞 Call state: ${call.currentState}');
+      
+      // Navigate to enhanced call screen immediately
       Navigator.pushNamed(context, '/call');
+      
+      // Add a small delay then check call state
+      Future.delayed(const Duration(seconds: 1), () {
+        debugPrint('📞 Call state after 1s: ${call.currentState}');
+        debugPrint('📞 Active call in service: ${service.activeCall?.callId}');
+        debugPrint('📞 Current calls count: ${service.currentCalls.length}');
+      });
     } else {
+      debugPrint('❌ Failed to create call');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to make call')),
       );
@@ -834,17 +861,54 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _connect() async {
-    final service = Provider.of<TelnyxVoipService>(context, listen: false);
-    await service.loginWithCredentials(
-      username: _sipUser,
-      password: _sipPassword,
-      callerName: _callerIdName,
-    );
+    try {
+      final credentialStorage = CredentialStorage();
+      final credentials = await credentialStorage.getCredentials();
+      
+      if (credentials != null) {
+        final service = Provider.of<TelnyxVoipService>(context, listen: false);
+        await service.loginWithCredentials(
+          username: credentials['sipId']!,
+          password: credentials['password']!,
+          callerName: _callerIdName,
+        );
+      } else {
+        // No credentials found, redirect to login
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+    } catch (e) {
+      debugPrint('❌ Error connecting with stored credentials: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connection failed: $e')),
+      );
+    }
   }
 
   Future<void> _disconnect() async {
     final service = Provider.of<TelnyxVoipService>(context, listen: false);
     await service.logout();
+  }
+  
+  Future<void> _logout() async {
+    try {
+      // Disconnect from Telnyx service first
+      final service = Provider.of<TelnyxVoipService>(context, listen: false);
+      await service.logout();
+      
+      // Clear stored credentials
+      final credentialStorage = CredentialStorage();
+      await credentialStorage.clearCredentials();
+      
+      // Navigate back to login screen
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+    } catch (e) {
+      debugPrint('❌ Error during logout: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Logout failed: $e')),
+      );
+    }
   }
   
   /// Manual CallKit notification cleanup for testing
@@ -1018,6 +1082,192 @@ class _CallPageState extends State<CallPage> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Splash screen that checks login status and routes accordingly
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Setup animations
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    );
+    
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+    ));
+    
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+    ));
+    
+    // Start animation and check login status
+    _animationController.forward();
+    _checkLoginAndNavigate();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkLoginAndNavigate() async {
+    try {
+      // Wait for minimum splash duration
+      await Future.delayed(const Duration(milliseconds: 1500));
+      
+      final credentialStorage = CredentialStorage();
+      final isLoggedIn = await credentialStorage.isLoggedIn();
+      final hasValidCredentials = await credentialStorage.validateStoredCredentials();
+      
+      if (mounted) {
+        if (isLoggedIn && hasValidCredentials) {
+          // Check if this is a killed-state launch
+          if (_isKilledStateLaunch && _launchCallId != null) {
+            debugPrint('⚡ Killed-state launch detected, going to call screen');
+            Navigator.of(context).pushReplacementNamed('/call');
+          } else {
+            // Normal launch - go to home
+            Navigator.of(context).pushReplacementNamed('/home');
+          }
+        } else {
+          // Not logged in or invalid credentials - go to login
+          Navigator.of(context).pushReplacementNamed('/login');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking login status: $e');
+      // On error, default to login screen
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppTheme.primaryTelnyx,
+              AppTheme.primaryTelnyxDark,
+              AppTheme.secondaryTelnyx,
+            ],
+          ),
+        ),
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _animationController,
+            builder: (context, child) {
+              return FadeTransition(
+                opacity: _fadeAnimation,
+                child: ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Telnyx Logo
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.phone,
+                          color: Colors.white,
+                          size: 60,
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 32),
+                      
+                      // App Title
+                      Text(
+                        'Telnyx',
+                        style: AppTheme.callNameStyle.copyWith(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 8),
+                      
+                      Text(
+                        'Softphone',
+                        style: AppTheme.callStatusStyle.copyWith(
+                          fontSize: 18,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 60),
+                      
+                      // Loading indicator
+                      const SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      Text(
+                        'Initializing...',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
