@@ -532,6 +532,10 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   // Track Voice SDK ID
   String? _voiceSdkId;
   
+  // Call state monitoring
+  Timer? _callStateMonitor;
+  CallState? _lastCallState;
+  
   // Getters
   bool get isConnected => _isConnected;
   bool get isCallInProgress => _isCallInProgress;
@@ -664,6 +668,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
               _call!.callId = _incomingInvite!.callID;
               _call!.callState = CallState.ringing;
               
+              // Start call state monitoring for CallKit calls
+              _startCallStateMonitoring();
+              
               // Fix Android incoming audio routing
               if (Platform.isAndroid) {
                 Future.delayed(const Duration(milliseconds: 500), () {
@@ -700,6 +707,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   void _handleIncomingCall(IncomingInviteParams inviteParams) {
     print('📞 Incoming call from: ${inviteParams.callerIdNumber}');
     
+    // Reset push call state for new incoming calls
+    _isPushCallInProgress = false;
+    
     _incomingInvite = inviteParams;
     _status = 'Incoming call from ${inviteParams.callerIdNumber}';
     
@@ -710,6 +720,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     if (_appLifecycleState == AppLifecycleState.paused) {
       // App is in background - show CallKit notification only if not already showing
       print('📱 App in background - showing CallKit notification');
+      _isPushCallInProgress = true; // Set this only for background calls
       _showCallKitForIncomingCall(inviteParams);
     } else {
       // App is in foreground - show in-app UI
@@ -1081,6 +1092,16 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       // Start call duration timer
       _startCallDurationTimer();
       
+      // Start call state monitoring
+      _startCallStateMonitoring();
+      
+      // Fix Android audio routing for outgoing calls
+      if (Platform.isAndroid) {
+            Future.delayed(const Duration(milliseconds: 500), () {
+          _forceAndroidAudioOutput();
+        });
+      }
+      
       // Navigate to call screen
       navigatorKey.currentState?.pushNamed('/call');
       
@@ -1114,6 +1135,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       
       // Start call duration timer
       _startCallDurationTimer();
+      
+      // Start call state monitoring
+      _startCallStateMonitoring();
       
       // Fix Android incoming audio routing for regular accepts
       if (Platform.isAndroid) {
@@ -1200,11 +1224,14 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       // Stop call duration timer
       _stopCallDurationTimer();
       
+      // Stop call state monitoring
+      _stopCallStateMonitoring();
+      
       // Clear all CallKit notifications
       try {
         await FlutterCallkitIncoming.endAllCalls();
         print('✅ Cleared all CallKit notifications');
-          } catch (e) {
+    } catch (e) {
         print('⚠️ Error clearing CallKit notifications: $e');
       }
       
@@ -1404,6 +1431,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         // Stop call duration timer
         _stopCallDurationTimer();
         
+        // Stop call state monitoring
+        _stopCallStateMonitoring();
+        
         // Clear all CallKit notifications
         FlutterCallkitIncoming.endAllCalls().catchError((e) {
           print('⚠️ Error clearing CallKit notifications: $e');
@@ -1460,10 +1490,36 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     print('⏱️ Stopped call duration timer');
   }
   
+  /// Start call state monitoring
+  void _startCallStateMonitoring() {
+    _callStateMonitor?.cancel();
+    _callStateMonitor = Timer.periodic(Duration(milliseconds: 500), (timer) {
+      if (_call != null) {
+        final currentState = _call!.callState;
+        if (currentState != _lastCallState) {
+          print('📞 Call state changed from $_lastCallState to $currentState');
+          _lastCallState = currentState;
+          _handleCallStateChange(currentState);
+        }
+      } else {
+        // Call ended, stop monitoring
+        _stopCallStateMonitoring();
+      }
+    });
+  }
+  
+  /// Stop call state monitoring
+  void _stopCallStateMonitoring() {
+    _callStateMonitor?.cancel();
+    _callStateMonitor = null;
+    _lastCallState = null;
+  }
+  
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopCallDurationTimer();
+    _stopCallStateMonitoring();
     _call?.endCall();
     super.dispose();
   }
