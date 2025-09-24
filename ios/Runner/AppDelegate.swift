@@ -26,9 +26,15 @@ import FirebaseCore
             print("❌ GoogleService-Info.plist not found in bundle")
         }
 
-        // This is the CORRECT way to initialize Firebase for iOS + Flutter
-        FirebaseApp.configure()
-        print("✅ Firebase configured for iOS")
+        // Configure Firebase with error handling
+        do {
+            FirebaseApp.configure()
+            print("✅ Firebase configured for iOS")
+        } catch {
+            print("⚠️ Firebase configuration failed: \(error.localizedDescription)")
+            print("🔄 App will continue without Firebase (for development/testing)")
+            // Don't crash - let the app continue
+        }
 
         GeneratedPluginRegistrant.register(with: self)
 
