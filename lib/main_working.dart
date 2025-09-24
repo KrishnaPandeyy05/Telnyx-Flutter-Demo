@@ -55,11 +55,11 @@ class MyCustomLogger extends CustomLogger {
 // Background message handler for Firebase
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
   print('📱 Background message received: ${message.data}');
-  
+  print('📱 Processing background call data...');
+
   final data = message.data;
-  
+
   // Extract call info from metadata field (Firebase structure)
   String? callId;
   String? voiceSdkId;
@@ -78,13 +78,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       print('❌ Error parsing metadata: $e');
     }
   }
-  
+
   // Fallback to direct data fields
   callId ??= data['call_id'];
   voiceSdkId ??= data['voice_sdk_id'];
   callerName ??= data['caller_name'] ?? 'Unknown Caller';
   callerNumber ??= data['caller_number'] ?? 'Unknown Number';
-  
+
   if (callId != null && voiceSdkId != null) {
     print('📱 Triggering CallKit for callId=$callId');
     await _showCallKitIncoming(data);
@@ -151,7 +151,6 @@ Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
         isShowFullLockedScreen: true,
       ),
       ios: const IOSParams(
-        iconName: 'CallKitLogo',
         handleType: 'generic',
         supportsVideo: false,
         maximumCallGroups: 2,
@@ -193,18 +192,46 @@ Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
   }
 }
 
-// Method channel to receive CallKit intents from native
+// Method channels to receive CallKit intents from native
 const MethodChannel _methodChannel = MethodChannel('com.example.telnyx_fresh_app/callkit');
+const MethodChannel _voipChannel = MethodChannel('com.example.telnyx_fresh_app/voip');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Initialize Firebase with robust error handling
+  print('🔥 Initializing Firebase...');
+
+  // Check if Firebase configuration is available
+  try {
+    // Try to get Firebase options to check if config is loaded
+    print('🔍 Checking Firebase configuration...');
+    await Future.delayed(const Duration(milliseconds: 200));
+  } catch (e) {
+    print('⚠️ Firebase configuration check failed: $e');
+  }
+
+  // iOS Firebase SDK is initialized in AppDelegate, so we don't need to initialize here
+  // But we can test if it's available
+  try {
+    // Test Firebase availability
+    await FirebaseMessaging.instance.getToken();
+    print('✅ Firebase is available and working');
+  } catch (e) {
+    print('⚠️ Firebase not available: $e');
+    print('🔄 This might be normal if iOS Firebase SDK failed to configure');
+  }
+
+  // Always try to set up permissions and basic functionality
+  try {
+    await _requestPermissions();
+  } catch (e) {
+    print('⚠️ Permission request failed: $e');
+  }
   
-  await _requestPermissions();
-  
-  // Set up method channel listener for CallKit intents
+  // Set up method channel listeners for CallKit and VoIP intents
   _methodChannel.setMethodCallHandler(_handleNativeMethodCall);
+  _voipChannel.setMethodCallHandler(_handleVoIPMethodCall);
   
   // Check if app was launched from CallKit accept BEFORE building app
   await _detectCallKitLaunchState();
@@ -217,7 +244,179 @@ Future<void> main() async {
   );
 }
 
-// Handle native method calls from MainActivity
+    /// Check for pending CallKit calls when app becomes active
+  Future<void> _checkPendingCallKitCalls() async {
+    try {
+      print('🔍 Checking for pending CallKit calls...');
+
+      // Check if there are any active calls in CallKit
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      print('📱 Found ${activeCalls.length} active calls in CallKit');
+
+      if (activeCalls.isNotEmpty) {
+        // Get the first active call
+        final call = activeCalls.first;
+        final callId = call['id'] as String?;
+
+        if (callId != null) {
+          print('📞 Found pending CallKit call: $callId');
+
+          // Extract call information
+          final callerName = call['nameCaller'] as String? ?? 'Unknown Caller';
+          final callerNumber = call['handle'] as String? ?? 'Unknown Number';
+
+          // Set up the call info for processing
+          globalCallKitCallInfo = {
+            'call_id': callId,
+            'caller_name': callerName,
+            'caller_number': callerNumber,
+            'voice_sdk_id': '', // This will be populated from push notification if available
+          };
+
+          _isLaunchingFromCallKitAccept = true;
+
+          print('📞 Pending CallKit call detected - will process when service is ready');
+        }
+      }
+    } catch (e) {
+      print('❌ Error checking pending CallKit calls: $e');
+    }
+  }
+
+// Handle VoIP method calls from iOS
+Future<void> _handleVoIPMethodCall(MethodCall call) async {
+  print('📱 VoIP method call: ${call.method}');
+
+  if (call.method == 'onVoIPTokenReceived') {
+    final token = call.arguments as String?;
+    if (token != null) {
+      print('📱 Received VoIP token: ${token.substring(0, 20)}...');
+      // Store the VoIP token for use in push notifications
+      // You can send this to your Telnyx server for VoIP push notifications
+      // This token should be sent to your server to enable VoIP push notifications
+    }
+  } else if (call.method == 'appDidBecomeActive') {
+    print('📱 iOS app became active - checking for pending calls');
+    // Check for any pending CallKit calls when app becomes active
+    await _checkPendingCallKitCalls();
+  } else if (call.method == 'onIncomingCall') {
+    print('📱 iOS incoming call notification received');
+    final callData = call.arguments as Map<dynamic, dynamic>?;
+    if (callData != null) {
+      // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+      final stringMap = callData.map((key, value) => MapEntry(key.toString(), value));
+      await _handleIncomingVoIPCall(stringMap);
+    }
+  }
+}
+
+/// Handle incoming VoIP call from iOS
+Future<void> _handleIncomingVoIPCall(Map<String, dynamic> callData) async {
+  try {
+    print('📞 Handling incoming VoIP call: $callData');
+
+    // Extract call information from the VoIP payload
+    final callId = callData['call_id'] as String?;
+    final callerName = callData['caller_name'] as String? ?? 'Unknown Caller';
+    final callerNumber = callData['caller_number'] as String? ?? 'Unknown Number';
+    final voiceSdkId = callData['voice_sdk_id'] as String?;
+
+    if (callId == null || voiceSdkId == null) {
+      print('❌ Missing required call data for VoIP call');
+      return;
+    }
+
+    print('📞 VoIP call details: callId=$callId, caller=$callerName/$callerNumber, sdkId=$voiceSdkId');
+
+    // Store call info for processing
+    globalCallKitCallInfo = {
+      'call_id': callId,
+      'caller_name': callerName,
+      'caller_number': callerNumber,
+      'voice_sdk_id': voiceSdkId,
+    };
+
+    // Show CallKit notification for iOS
+    await _showCallKitIncomingForiOS(callData);
+
+  } catch (e) {
+    print('❌ Error handling incoming VoIP call: $e');
+  }
+}
+
+/// Show CallKit notification specifically for iOS
+Future<void> _showCallKitIncomingForiOS(Map<String, dynamic> data) async {
+  try {
+    print('📱 Showing iOS CallKit notification for VoIP call: $data');
+
+    final callId = data['call_id'] ?? 'unknown';
+    final callerName = data['caller_name'] ?? 'Unknown Caller';
+    final callerNumber = data['caller_number'] ?? 'Unknown Number';
+    final voiceSdkId = data['voice_sdk_id'];
+
+    final params = CallKitParams(
+      id: callId,
+      nameCaller: callerName,
+      appName: 'Adit Telnyx',
+      handle: callerNumber,
+      type: 0,
+      duration: 45000,
+      textAccept: 'Accept',
+      textDecline: 'Decline',
+      missedCallNotification: const NotificationParams(
+        showNotification: true,
+        isShowCallback: true,
+        subtitle: 'Missed call',
+        callbackText: 'Call back',
+      ),
+      android: const AndroidParams(
+        isCustomNotification: true,
+        isShowLogo: true,
+        ringtonePath: 'system_ringtone_default',
+        backgroundColor: '#0955fa',
+        actionColor: '#4CAF50',
+        textColor: '#ffffff',
+        incomingCallNotificationChannelName: 'Incoming Call',
+        missedCallNotificationChannelName: 'Missed Call',
+        isShowCallID: false,
+        isShowFullLockedScreen: true,
+      ),
+      ios: const IOSParams(
+        handleType: 'generic',
+        supportsVideo: false,
+        maximumCallGroups: 2,
+        maximumCallsPerCallGroup: 1,
+        audioSessionMode: 'default',
+        audioSessionActive: true,
+        audioSessionPreferredSampleRate: 44100.0,
+        audioSessionPreferredIOBufferDuration: 0.005,
+        supportsDTMF: true,
+        supportsHolding: true,
+        supportsGrouping: false,
+        supportsUngrouping: false,
+        ringtonePath: 'system_ringtone_default',
+      ),
+      extra: {
+        'metadata': jsonEncode({
+          'call_id': callId,
+          'caller_name': callerName,
+          'caller_number': callerNumber,
+          'voice_sdk_id': voiceSdkId,
+        })
+      },
+    );
+
+    print('📱 About to show iOS CallKit notification...');
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
+    print('✅ iOS CallKit notification triggered successfully');
+
+  } catch (e, stackTrace) {
+    print('❌ Error showing iOS CallKit notification: $e');
+    print('❌ Stack trace: $stackTrace');
+  }
+}
+
+// Handle native method calls from MainActivity and iOS
 Future<void> _handleNativeMethodCall(MethodCall call) async {
   print('📱 Native method call: ${call.method}');
   
@@ -365,6 +564,22 @@ Future<void> _handleNativeMethodCall(MethodCall call) async {
         print('✅ Navigated to call screen from native intent');
       }
     });
+  } else if (call.method == 'answerCall') {
+    print('🚀 iOS CallKit answer call received');
+    final callId = call.arguments as String?;
+    if (callId != null) {
+      // Find the service instance and handle the answer
+      final telnyxService = TelnyxService();
+      await telnyxService._handleCallKitAnswer(callId);
+    }
+  } else if (call.method == 'endCall') {
+    print('🚀 iOS CallKit end call received');
+    final callId = call.arguments as String?;
+    if (callId != null) {
+      // Find the service instance and handle the end call
+      final telnyxService = TelnyxService();
+      await telnyxService._handleCallKitEndCall(callId);
+    }
   }
 }
 
@@ -422,32 +637,32 @@ Future<void> _detectCallKitLaunchState() async {
 Future<void> _requestPermissions() async {
   if (Platform.isAndroid) {
     print('🔐 Requesting Android permissions...');
-    
+
     final permissions = [
       Permission.microphone,
       Permission.phone,
       Permission.notification,
       Permission.systemAlertWindow,
     ];
-    
+
     final statuses = await permissions.request();
-    
+
     // Log permission statuses
     for (final permission in permissions) {
       final status = statuses[permission];
       print('🔐 Permission $permission: $status');
-      
+
       if (status != PermissionStatus.granted) {
         print('⚠️ Permission $permission not granted - CallKit may not work properly');
       }
     }
-    
+
     // Special handling for system alert window permission
     if (statuses[Permission.systemAlertWindow] != PermissionStatus.granted) {
       print('⚠️ System Alert Window permission not granted - requesting manually...');
       await Permission.systemAlertWindow.request();
     }
-    
+
     // Request notification permission for Android 13+
     try {
       await FlutterCallkitIncoming.requestNotificationPermission({
@@ -459,12 +674,12 @@ Future<void> _requestPermissions() async {
     } catch (e) {
       print('⚠️ Error requesting notification permission: $e');
     }
-    
+
     // Check and request full screen intent permission for Android 14+
     try {
       final canUseFullScreen = await FlutterCallkitIncoming.canUseFullScreenIntent();
       print('📱 Can use full screen intent: $canUseFullScreen');
-      
+
       if (!canUseFullScreen) {
         await FlutterCallkitIncoming.requestFullIntentPermission();
         print('✅ Full screen intent permission requested');
@@ -472,11 +687,32 @@ Future<void> _requestPermissions() async {
     } catch (e) {
       print('⚠️ Error with full screen intent permission: $e');
     }
-    
+
   } else if (Platform.isIOS) {
-    await Permission.microphone.request();
+    print('🔐 Requesting iOS permissions...');
+
+    // Request microphone permission for VoIP calls
+    final micStatus = await Permission.microphone.request();
+    print('🔐 Microphone permission: $micStatus');
+
+    if (micStatus != PermissionStatus.granted) {
+      print('⚠️ Microphone permission not granted - VoIP calls may not work properly');
+    }
+
+    // Request notification permissions for iOS
+    final notificationStatus = await Permission.notification.request();
+    print('🔐 Notification permission: $notificationStatus');
+
+    if (notificationStatus != PermissionStatus.granted) {
+      print('⚠️ Notification permission not granted - push notifications may not work properly');
+    }
+
+    // For iOS 12+, CallKit doesn't require additional permissions
+    // The app will handle VoIP push notifications through PushKit
+
+    print('✅ iOS permission requests completed');
   }
-  
+
   print('✅ Permission requests completed');
 }
 
@@ -546,7 +782,9 @@ class TelnyxService extends ChangeNotifier {
         fcmToken = await FirebaseMessaging.instance.getToken();
         print('📱 FCM Token obtained: ${fcmToken?.substring(0, 20)}...');
       } catch (e) {
-        print('❌ Error getting FCM token: $e');
+        print('⚠️ FCM Token not available (Firebase not configured): $e');
+        print('🔄 Continuing without push notifications');
+        fcmToken = null; // No push notifications available
       }
       
       final config = CredentialConfig(
@@ -677,23 +915,45 @@ class TelnyxService extends ChangeNotifier {
   
   
   void _setupFirebaseMessaging() {
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('📱 Foreground message received: ${message.data}');
-      
-      final data = message.data;
-      
-      // Check if this is an incoming call message
-      if (data.containsKey('message') && data['message'] == 'Incoming call!') {
-        // Show CallKit for foreground messages too
-        _showCallKitIncoming(data);
+    // Set up Firebase messaging (Firebase should already be initialized in main())
+    try {
+      print('🔥 Setting up Firebase messaging...');
+
+      // Firebase should already be initialized in main(), so we don't need to initialize again
+      // If Firebase isn't initialized, skip messaging setup
+      try {
+        // Test if Firebase is available by trying to access it
+        await FirebaseMessaging.instance.getToken();
+        print('✅ Firebase is available for messaging');
+
+        // Handle foreground messages
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          print('📱 Foreground message received: ${message.data}');
+
+          final data = message.data;
+
+          // Check if this is an incoming call message
+          if (data.containsKey('message') && data['message'] == 'Incoming call!') {
+            // Show CallKit for foreground messages too
+            _showCallKitIncoming(data);
+          }
+        });
+
+        // Handle app opened from notification
+        FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+          print('📱 App opened from push notification: ${message.data}');
+        });
+
+        print('✅ Firebase Messaging listeners set up successfully');
+      } catch (firebaseError) {
+        print('⚠️ Firebase not available for messaging: $firebaseError');
+        print('🔄 Push notifications will not work, but app will continue');
       }
-    });
-    
-    // Handle app opened from notification
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('📱 App opened from push notification: ${message.data}');
-    });
+
+    } catch (e) {
+      print('⚠️ Firebase Messaging setup failed: $e');
+      print('🔄 Push notifications will not work, but app will continue');
+    }
   }
   
   void _setupCallKitListeners() {
@@ -832,10 +1092,13 @@ class TelnyxService extends ChangeNotifier {
       
       // Get fresh config
       String? fcmToken;
+      // Get Firebase token with proper error handling
       try {
         fcmToken = await FirebaseMessaging.instance.getToken();
+        print('✅ FCM Token obtained successfully');
       } catch (e) {
-        print('❌ Error getting FCM token: $e');
+        print('⚠️ FCM Token not available: $e');
+        fcmToken = null; // No push notifications available
       }
       
       final config = CredentialConfig(
@@ -892,10 +1155,13 @@ class TelnyxService extends ChangeNotifier {
       
       // Get fresh config
       String? fcmToken;
+      // Get Firebase token with proper error handling
       try {
         fcmToken = await FirebaseMessaging.instance.getToken();
+        print('✅ FCM Token obtained successfully');
       } catch (e) {
-        print('❌ Error getting FCM token: $e');
+        print('⚠️ FCM Token not available: $e');
+        fcmToken = null; // No push notifications available
       }
       
       final config = CredentialConfig(
@@ -1152,7 +1418,68 @@ class TelnyxService extends ChangeNotifier {
     
     print('✅ Audio routing test completed');
   }
-  
+
+
+  /// Handle CallKit answer from iOS native
+  Future<void> _handleCallKitAnswer(String callId) async {
+    print('📞 CallKit answer received for call: $callId');
+
+    try {
+      // Find the call in active calls
+      final activeCalls = await FlutterCallkitIncoming.activeCalls();
+      final call = activeCalls.where((c) => c['id'] == callId).firstOrNull;
+
+      if (call != null) {
+        // Extract call information
+        final callerName = call['nameCaller'] as String? ?? 'Unknown Caller';
+        final callerNumber = call['handle'] as String? ?? 'Unknown Number';
+
+        // Set up call info for processing
+        globalCallKitCallInfo = {
+          'call_id': callId,
+          'caller_name': callerName,
+          'caller_number': callerNumber,
+          'voice_sdk_id': '', // This should be populated from push notification metadata
+        };
+
+        _isPushCallInProgress = true;
+        _status = 'Accepting iOS CallKit call...';
+        notifyListeners();
+
+        // Process the call accept
+        await _processCallKitAcceptFromGlobalState();
+
+        print('✅ iOS CallKit answer processed successfully');
+      }
+    } catch (e) {
+      print('❌ Error handling CallKit answer: $e');
+    }
+  }
+
+  /// Handle CallKit end call from iOS native
+  Future<void> _handleCallKitEndCall(String callId) async {
+    print('📞 CallKit end call received for call: $callId');
+
+    try {
+      // End any active calls
+      if (_call != null) {
+        _call!.endCall();
+        _call = null;
+        _isCallInProgress = false;
+        _isPushCallInProgress = false;
+        _status = _isConnected ? 'Connected' : 'Disconnected';
+        notifyListeners();
+      }
+
+      // Clear any incoming invites
+      _incomingInvite = null;
+
+      print('✅ iOS CallKit end call processed successfully');
+    } catch (e) {
+      print('❌ Error handling CallKit end call: $e');
+    }
+  }
+
   @override
   void dispose() {
     _call?.endCall();
