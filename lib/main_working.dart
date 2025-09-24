@@ -852,15 +852,18 @@ class TelnyxService extends ChangeNotifier {
         print('✅ Gateway state updated');
         break;
         
-      case SocketMethod.gatewayState:
-        print('✅ Gateway state received');
-        break;
-        
       case SocketMethod.invite:
         // Handle incoming call invitation
         if (message.message is ReceivedMessage) {
           final receivedMessage = message.message as ReceivedMessage;
           if (receivedMessage.inviteParams != null) {
+            // iOS: Do not auto-navigate or auto-answer on raw WebSocket invite.
+            // Wait for native CallKit answer callback before proceeding.
+            if (Platform.isIOS && !_isPushCallInProgress) {
+              _incomingInvite = receivedMessage.inviteParams!;
+              print('📱 iOS invite received - waiting for CallKit answer (no auto-navigation)');
+              break;
+            }
             if (_isPushCallInProgress) {
               // For CallKit accepted calls, update the call object
               print('📞 CallKit call connected - creating call object');
@@ -914,7 +917,7 @@ class TelnyxService extends ChangeNotifier {
   }
   
   
-  void _setupFirebaseMessaging() {
+  Future<void> _setupFirebaseMessaging() async {
     // Set up Firebase messaging (Firebase should already be initialized in main())
     try {
       print('🔥 Setting up Firebase messaging...');
@@ -1425,6 +1428,13 @@ class TelnyxService extends ChangeNotifier {
     print('📞 CallKit answer received for call: $callId');
 
     try {
+      // If we have a pending invite captured from WebSocket, proceed with setup now
+      if (_incomingInvite != null && !_isCallInProgress) {
+        _isPushCallInProgress = true;
+        _status = 'Accepting iOS CallKit call...';
+        notifyListeners();
+      }
+
       // Find the call in active calls
       final activeCalls = await FlutterCallkitIncoming.activeCalls();
       final call = activeCalls.where((c) => c['id'] == callId).firstOrNull;
