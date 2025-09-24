@@ -1485,6 +1485,11 @@ class TelnyxService extends ChangeNotifier {
       _incomingInvite = null;
 
       print('✅ iOS CallKit end call processed successfully');
+
+      // Navigate back to home screen
+      if (navigatorKey.currentState != null) {
+        navigatorKey.currentState!.popUntil((route) => route.isFirst);
+      }
     } catch (e) {
       print('❌ Error handling CallKit end call: $e');
     }

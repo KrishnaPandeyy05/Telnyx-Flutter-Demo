@@ -197,8 +197,13 @@ import FirebaseCore
     private func configureAudioSessionForCall() {
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .duckOthers])
-            try audioSession.setActive(true)
+            try audioSession.setCategory(
+                .playAndRecord,
+                mode: .voiceChat,
+                options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker, .mixWithOthers]
+            )
+            try audioSession.overrideOutputAudioPort(.speaker)
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
             print("Audio session configured for call")
         } catch {
             print("Error configuring audio session: \(error.localizedDescription)")
