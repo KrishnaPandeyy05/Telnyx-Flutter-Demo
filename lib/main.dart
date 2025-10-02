@@ -646,6 +646,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   bool _isConnected = false;
   bool _isCallInProgress = false;
   String _status = 'Disconnected';
+  String? _lastPushTokenSent;
+  bool _isReconnecting = false;
+  bool _hasReconnectedWithVoipToken = false;
   
   // Track if we're handling a push call
   bool _isPushCallInProgress = false;
@@ -682,11 +685,13 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   
   // Set VoIP token and reconnect if needed
   void setVoipToken(String token) {
+    if (_voipToken == token && _lastPushTokenSent == token) {
+      print('📱 VoIP token unchanged, skipping reconnect');
+      return;
+    }
     _voipToken = token;
-    print('📱 VoIP token stored in TelnyxService: ${token.substring(0, 20)}...');
-    
-    // Always reconnect with VoIP token to ensure Telnyx uses the correct token for push notifications
-    print('📱 Reconnecting with VoIP token to update push notification token...');
+    _hasReconnectedWithVoipToken = false;
+    print('📱 VoIP token updated: ${token.substring(0, 20)}...');
     _reconnectWithVoipToken();
   }
   
@@ -697,6 +702,17 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       if (_voipToken == null) {
         print('📱 No VoIP token available for reconnection');
         return;
+      }
+      if (_isReconnecting) {
+        print('📱 Reconnect already in progress');
+        return;
+      }
+      _isReconnecting = true;
+      
+      // Ensure clean reconnect to avoid punt loops
+      if (_isConnected) {
+        _telnyxClient.disconnect();
+        _isConnected = false;
       }
       
       print('📱 Reconnecting Telnyx with VoIP token...');
@@ -713,10 +729,13 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       );
       
       _telnyxClient.connectWithCredential(config);
+      _lastPushTokenSent = _voipToken;
       print('✅ Reconnected with VoIP token');
       
     } catch (e) {
       print('❌ Error reconnecting with VoIP token: $e');
+    } finally {
+      _isReconnecting = false;
     }
   }
   
@@ -828,16 +847,8 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
           print('📱 Stored Voice SDK ID: $_voiceSdkId');
         }
         
-        // If we have a VoIP token, reconnect to ensure Telnyx uses it for push notifications
-        print('📱 Client ready - checking for VoIP token: $_voipToken');
-        if (_voipToken != null) {
-          print('📱 Client ready - reconnecting with VoIP token to update push notifications...');
-          Future.delayed(Duration(seconds: 2), () {
-            _reconnectWithVoipToken();
-          });
-        } else {
-          print('📱 Client ready - no VoIP token available for reconnection');
-        }
+        // Do not reconnect here; reconnection will only occur when token actually changes
+        print('📱 Client ready - no automatic reconnect (token change triggers reconnect)');
         break;
         
       case SocketMethod.gatewayState:
