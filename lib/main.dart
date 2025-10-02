@@ -45,6 +45,9 @@ bool _isLaunchingFromCallKitAccept = false;
 // Store call info for direct launch
 Map<String, dynamic>? globalCallKitCallInfo;
 
+// Global variable to store VoIP token
+String? globalVoipToken;
+
 // Custom Logger Implementation
 class MyCustomLogger extends CustomLogger {
   @override
@@ -405,8 +408,16 @@ Future<void> _handleVoIPMethodCall(MethodCall call) async {
     if (token != null) {
       print('📱 Received VoIP token: ${token.substring(0, 20)}...');
       // Store the VoIP token in TelnyxService for use in push notifications
-      final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
-      telnyxService.setVoipToken(token);
+      try {
+        final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
+        telnyxService.setVoipToken(token);
+        print('📱 VoIP token stored in TelnyxService: ${token.substring(0, 20)}...');
+      } catch (e) {
+        print('❌ Error storing VoIP token: $e');
+        // Store globally for later use
+        globalVoipToken = token;
+        print('📱 VoIP token stored globally for later use');
+      }
       print('📱 VoIP token ready for Telnyx SDK');
     }
   } else if (call.method == 'appDidBecomeActive') {
@@ -727,9 +738,12 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       }
     
     // Use VoIP token for push notifications if available, otherwise fallback to FCM
-    String? notificationToken = _voipToken ?? fcmToken;
+    String? notificationToken = _voipToken ?? globalVoipToken ?? fcmToken;
     if (_voipToken != null) {
-      print('📱 Using VoIP token for push notifications: ${_voipToken!.substring(0, 20)}...');
+      print('📱 Using stored VoIP token for push notifications: ${_voipToken!.substring(0, 20)}...');
+    } else if (globalVoipToken != null) {
+      print('📱 Using global VoIP token for push notifications: ${globalVoipToken!.substring(0, 20)}...');
+      _voipToken = globalVoipToken; // Store it for future use
     } else {
       print('📱 Using FCM token for push notifications: ${fcmToken?.substring(0, 20)}...');
     }
@@ -1048,7 +1062,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
           try {
             final extra = event.body['extra'];
             if (extra != null && extra['metadata'] != null) {
-              final pushMetaData = PushMetaData.fromJson(extra['metadata']);
+              final metadataString = extra['metadata'] as String;
+              final metadata = jsonDecode(metadataString);
+              final pushMetaData = PushMetaData.fromJson(metadata);
               await handlePushNotification(pushMetaData);
             }
           } catch (e) {
