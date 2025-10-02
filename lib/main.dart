@@ -1009,13 +1009,18 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     try {
       print('📱 Handling push notification with Telnyx SDK...');
       
-      // Get the current notification token (FCM or VoIP)
-      String? notificationToken;
-      try {
-        notificationToken = await FirebaseMessaging.instance.getToken();
-        print('📱 Using FCM token for push handling: ${notificationToken?.substring(0, 20)}...');
-      } catch (e) {
-        print('❌ Error getting FCM token: $e');
+      // Use VoIP token for push handling (preferred for iOS)
+      String? notificationToken = _voipToken ?? globalVoipToken;
+      if (notificationToken != null) {
+        print('📱 Using VoIP token for push handling: ${notificationToken.substring(0, 20)}...');
+      } else {
+        // Fallback to FCM token if VoIP token not available
+        try {
+          notificationToken = await FirebaseMessaging.instance.getToken();
+          print('📱 Using FCM token for push handling: ${notificationToken?.substring(0, 20)}...');
+        } catch (e) {
+          print('❌ Error getting FCM token: $e');
+        }
       }
       
       // Create credential config
