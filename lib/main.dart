@@ -693,7 +693,11 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   // Reconnect with VoIP token
   Future<void> _reconnectWithVoipToken() async {
     try {
-      if (_voipToken == null) return;
+      print('📱 _reconnectWithVoipToken called - VoIP token: $_voipToken');
+      if (_voipToken == null) {
+        print('📱 No VoIP token available for reconnection');
+        return;
+      }
       
       print('📱 Reconnecting Telnyx with VoIP token...');
       
@@ -825,11 +829,14 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         }
         
         // If we have a VoIP token, reconnect to ensure Telnyx uses it for push notifications
+        print('📱 Client ready - checking for VoIP token: $_voipToken');
         if (_voipToken != null) {
           print('📱 Client ready - reconnecting with VoIP token to update push notifications...');
           Future.delayed(Duration(seconds: 2), () {
             _reconnectWithVoipToken();
           });
+        } else {
+          print('📱 Client ready - no VoIP token available for reconnection');
         }
         break;
         
