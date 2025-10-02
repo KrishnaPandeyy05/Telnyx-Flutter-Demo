@@ -456,10 +456,28 @@ Future<void> _handlePushNotification() async {
   try {
     print('📱 Checking for push notification metadata...');
     
-    // TODO: Implement proper Telnyx SDK push notification handling
-    // For now, just log that we're checking for push notifications
-    print('📱 Push notification handling - to be implemented with correct Telnyx SDK methods');
-    
+    // TODO: Implement proper push metadata retrieval
+    // The TelnyxClient.getPushMetaData() method doesn't exist in current SDK version
+    final data = null; // Placeholder until we implement correct method
+    if (data != null) {
+      print('📱 Push metadata found: $data');
+      
+      // Parse the push metadata
+      final pushMetaData = PushMetaData.fromJson(data);
+      if (pushMetaData != null) {
+        print('📱 Push metadata parsed successfully');
+        
+        // Get the TelnyxService instance
+        final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
+        
+        // Handle the push notification using Telnyx SDK
+        await telnyxService.handlePushNotification(pushMetaData);
+      } else {
+        print('❌ Failed to parse push metadata');
+      }
+    } else {
+      print('📱 No push metadata found');
+    }
   } catch (e) {
     print('❌ Error handling push notification: $e');
   }
@@ -927,9 +945,40 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     try {
       print('📱 Handling push notification with Telnyx SDK...');
       
-      // TODO: Implement proper Telnyx SDK push notification handling
-      // For now, just log that we received the push notification
-      print('📱 Push notification received - to be implemented with correct Telnyx SDK methods');
+      // Get the current notification token (FCM or VoIP)
+      String? notificationToken;
+      try {
+        notificationToken = await FirebaseMessaging.instance.getToken();
+        print('📱 Using FCM token for push handling: ${notificationToken?.substring(0, 20)}...');
+      } catch (e) {
+        print('❌ Error getting FCM token: $e');
+      }
+      
+      // Create credential config
+      final credentialConfig = CredentialConfig(
+        sipUser: _sipUser,
+        sipPassword: _sipPassword,
+        sipCallerIDName: _callerIdName,
+        sipCallerIDNumber: _callerIdNumber,
+        notificationToken: notificationToken,
+        debug: true,
+        logLevel: LogLevel.all,
+        customLogger: MyCustomLogger(),
+      );
+      
+      // Create token config
+      final tokenConfig = TokenConfig(
+        sipToken: _sipPassword,
+        sipCallerIDName: _callerIdName,
+        sipCallerIDNumber: _callerIdNumber,
+        notificationToken: notificationToken,
+        debug: true, // Added missing required parameter
+        logLevel: LogLevel.all, // Added missing required parameter
+      );
+      
+      // Handle the push notification using Telnyx SDK
+      _telnyxClient.handlePushNotification(pushMetaData, credentialConfig, tokenConfig);
+      print('✅ Push notification handled by Telnyx SDK');
       
     } catch (e) {
       print('❌ Error handling push notification: $e');
@@ -943,6 +992,19 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       print('📱 CallKit event received in TelnyxService: ${event.event}');
       
       switch (event.event) {
+        case Event.actionCallIncoming:
+          // Handle incoming call - retrieve push metadata from extras
+          print('📱 CallKit incoming call event');
+          try {
+            final extra = event.body['extra'];
+            if (extra != null && extra['metadata'] != null) {
+              final pushMetaData = PushMetaData.fromJson(extra['metadata']);
+              await handlePushNotification(pushMetaData);
+            }
+          } catch (e) {
+            print('❌ Error handling incoming call metadata: $e');
+          }
+          break;
         case Event.actionCallAccept:
           // This handles runtime CallKit accept (when app is already running in background)
           print('🚀 Runtime CallKit Accept - navigating to call screen');
