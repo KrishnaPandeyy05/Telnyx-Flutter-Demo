@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 
@@ -75,7 +74,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       callerName = metadata['caller_name'];
       callerNumber = metadata['caller_number'];
       print('📱 Extracted from metadata: callId=$callId, voiceSdkId=$voiceSdkId');
-      } catch (e) {
+    } catch (e) {
       print('❌ Error parsing metadata: $e');
     }
   }
@@ -89,27 +88,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (callId != null && voiceSdkId != null) {
     print('📱 Triggering CallKit for callId=$callId');
     await _showCallKitIncoming(data);
-    
-    // Listen to action from FlutterCallkitIncoming
-    FlutterCallkitIncoming.onEvent.listen((CallEvent? event) async {
-      if (event == null) return;
-      
-      switch (event.event) {
-        case Event.actionCallAccept:
-          // Set the telnyx metadata for access when the app comes to foreground
-          TelnyxClient.setPushMetaData(data, isAnswer: true, isDecline: false);
-          print('✅ Push metadata set with isAnswer: true');
-          break;
-        case Event.actionCallDecline:
-          // When the user declines the call from the push notification, the SDK now handles this automatically.
-          // Simply set the decline flag and the SDK will handle the rest using the new push_decline method.
-          TelnyxClient.setPushMetaData(data, isAnswer: false, isDecline: true);
-          print('✅ Push metadata set with isDecline: true');
-          break;
-        default:
-          break;
-      }
-    });
   } else {
     print('❌ Missing call_id or voice_sdk_id - not showing CallKit');
     print('❌ Available data keys: ${data.keys.toList()}');
@@ -218,9 +196,6 @@ Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
 // Method channel to receive CallKit intents from native
 const MethodChannel _methodChannel = MethodChannel('com.example.telnyx_fresh_app/callkit');
 
-// Method channel to receive VoIP tokens from native
-const MethodChannel _voipMethodChannel = MethodChannel('com.example.telnyx_fresh_app/voip');
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -230,9 +205,6 @@ Future<void> main() async {
   
   // Set up method channel listener for CallKit intents
   _methodChannel.setMethodCallHandler(_handleNativeMethodCall);
-  
-  // Set up method channel listener for VoIP tokens
-  _voipMethodChannel.setMethodCallHandler(_handleVoIPMethodCall);
   
   // Check if app was launched from CallKit accept BEFORE building app
   await _detectCallKitLaunchState();
@@ -348,7 +320,7 @@ Future<void> _handleNativeMethodCall(MethodCall call) async {
               finalVoiceSdkId = metadata['voice_sdk_id']?.toString() ?? finalVoiceSdkId;
               
               print('🔍 Extracted voice_sdk_id: $finalVoiceSdkId');
-    } catch (e) {
+            } catch (e) {
               print('❌ Error parsing metadata from EXTRA_CALLKIT_EXTRA: $e');
             }
           }
@@ -396,92 +368,6 @@ Future<void> _handleNativeMethodCall(MethodCall call) async {
   }
 }
 
-// Handle VoIP method calls from iOS
-Future<void> _handleVoIPMethodCall(MethodCall call) async {
-  print('📱 VoIP method call: ${call.method}');
-
-  if (call.method == 'onVoIPTokenReceived') {
-    final token = call.arguments as String?;
-    if (token != null) {
-      print('📱 Received VoIP token: ${token.substring(0, 20)}...');
-      // Store the VoIP token for use in push notifications
-      // The Telnyx SDK will automatically use this token when connecting
-      print('📱 VoIP token ready for Telnyx SDK');
-    }
-  } else if (call.method == 'appDidBecomeActive') {
-    print('📱 iOS app became active - checking for pending calls');
-    // Check for any pending push notifications
-    await _handlePushNotification();
-  } else if (call.method == 'onIncomingCall') {
-    print('📱 iOS incoming call notification received');
-    final callData = call.arguments as Map<dynamic, dynamic>?;
-    if (callData != null) {
-      // Convert Map<dynamic, dynamic> to Map<String, dynamic>
-      final stringMap = callData.map((key, value) => MapEntry(key.toString(), value));
-      await _handleIncomingVoIPCall(stringMap);
-    }
-  }
-}
-
-/// Handle incoming VoIP call from iOS
-Future<void> _handleIncomingVoIPCall(Map<String, dynamic> callData) async {
-  print('📱 Handling incoming VoIP call: $callData');
-  
-  // Extract call information
-  final callId = callData['call_id']?.toString() ?? 'unknown';
-  final callerName = callData['caller_name']?.toString() ?? 'Unknown';
-  final callerNumber = callData['caller_number']?.toString() ?? 'Unknown';
-  final voiceSdkId = callData['voice_sdk_id']?.toString() ?? '';
-  
-  print('📱 VoIP Call - ID: $callId, Name: $callerName, Number: $callerNumber, VoiceSDK: $voiceSdkId');
-  
-  // Store call info for later use
-  globalCallKitCallInfo = {
-    'call_id': callId,
-    'caller_name': callerName,
-    'caller_number': callerNumber,
-    'voice_sdk_id': voiceSdkId,
-  };
-  
-  // Navigate to call screen if app is active
-  final navigatorState = navigatorKey.currentState;
-  if (navigatorState != null) {
-    navigatorState.pushNamedAndRemoveUntil('/call', (route) => false);
-    print('✅ Navigated to call screen from VoIP push');
-  }
-}
-
-/// Handle push notifications using Telnyx SDK methods
-Future<void> _handlePushNotification() async {
-  try {
-    print('📱 Checking for push notification metadata...');
-    
-    // Get push metadata from Telnyx SDK
-    final data = await TelnyxClient.getPushMetaData();
-    if (data != null) {
-      print('📱 Push metadata found: $data');
-      
-      // Parse the push metadata
-      final pushMetaData = PushMetaData.fromJson(data);
-      if (pushMetaData != null) {
-        print('📱 Push metadata parsed successfully');
-        
-        // Get the TelnyxService instance
-        final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
-        
-        // Handle the push notification using Telnyx SDK
-        await telnyxService.handlePushNotification(pushMetaData);
-      } else {
-        print('❌ Failed to parse push metadata');
-      }
-    } else {
-      print('📱 No push metadata found');
-    }
-  } catch (e) {
-    print('❌ Error handling push notification: $e');
-  }
-}
-
 // Detect if app was launched from CallKit accept using service callback
 Future<void> _detectCallKitLaunchState() async {
   try {
@@ -522,10 +408,8 @@ Future<void> _detectCallKitLaunchState() async {
     // Cancel the subscription
     subscription.cancel();
     
-    // Check both plugin events and native method call flag
-    if (callKitDetected || _isLaunchingFromCallKitAccept) {
+    if (callKitDetected) {
       print('📞 App was launched from CallKit - will start at call screen');
-      _isLaunchingFromCallKitAccept = true; // Ensure flag is set
     } else {
       print('🔍 Normal app launch - starting at home screen');
     }
@@ -585,7 +469,7 @@ Future<void> _requestPermissions() async {
         await FlutterCallkitIncoming.requestFullIntentPermission();
         print('✅ Full screen intent permission requested');
       }
-  } catch (e) {
+    } catch (e) {
       print('⚠️ Error with full screen intent permission: $e');
     }
     
@@ -620,7 +504,7 @@ class _TelnyxAppState extends State<TelnyxApp> {
   }
 }
 
-class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
+class TelnyxService extends ChangeNotifier {
   late TelnyxClient _telnyxClient;
   Call? _call;
   IncomingInviteParams? _incomingInvite;
@@ -634,21 +518,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   // Store pending CallKit accepted call info
   Map<String, dynamic>? _pendingAcceptedCall;
   
-  // Track app lifecycle state
-  AppLifecycleState? _appLifecycleState;
-  
-  // Call duration tracking
-  DateTime? _callStartTime;
-  Timer? _durationTimer;
-  Duration _callDuration = Duration.zero;
-  
-  // Track Voice SDK ID
-  String? _voiceSdkId;
-  
-  // Call state monitoring
-  Timer? _callStateMonitor;
-  CallState? _lastCallState;
-  
   // Getters
   bool get isConnected => _isConnected;
   bool get isCallInProgress => _isCallInProgress;
@@ -656,11 +525,8 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   Call? get call => _call;
   IncomingInviteParams? get incomingInvite => _incomingInvite;
   Map<String, dynamic>? get pendingAcceptedCall => _pendingAcceptedCall;
-  Duration get callDuration => _callDuration;
   
   TelnyxService() {
-    WidgetsBinding.instance.addObserver(this);
-    _appLifecycleState = WidgetsBinding.instance.lifecycleState;
     _initialize();
   }
   
@@ -682,11 +548,11 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       } catch (e) {
         print('❌ Error getting FCM token: $e');
       }
-    
-    final config = CredentialConfig(
-      sipUser: _sipUser,
-      sipPassword: _sipPassword,
-      sipCallerIDName: _callerIdName,
+      
+      final config = CredentialConfig(
+        sipUser: _sipUser,
+        sipPassword: _sipPassword,
+        sipCallerIDName: _callerIdName,
         sipCallerIDNumber: _callerIdNumber,
         notificationToken: fcmToken,
         debug: true,
@@ -725,8 +591,8 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         await Future.delayed(const Duration(milliseconds: 500));
         await _processCallKitAcceptFromGlobalState();
       }
-    
-  } catch (e) {
+      
+    } catch (e) {
       print('❌ TelnyxService initialization error: $e');
       _status = 'Error: $e';
       notifyListeners();
@@ -742,16 +608,14 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         print('✅ Telnyx client ready');
         _isConnected = true;
         _status = 'Connected';
-        // Store the Voice SDK ID from the message
-        if (message.message is ReceivedMessage) {
-          final receivedMessage = message.message as ReceivedMessage;
-          _voiceSdkId = receivedMessage.voiceSdkId;
-          print('📱 Stored Voice SDK ID: $_voiceSdkId');
-        }
         break;
         
       case SocketMethod.gatewayState:
         print('✅ Gateway state updated');
+        break;
+        
+      case SocketMethod.gatewayState:
+        print('✅ Gateway state received');
         break;
         
       case SocketMethod.invite:
@@ -760,29 +624,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
           final receivedMessage = message.message as ReceivedMessage;
           if (receivedMessage.inviteParams != null) {
             if (_isPushCallInProgress) {
-              // For CallKit accepted calls, create the call object with handler
+              // For CallKit accepted calls, update the call object
               print('📞 CallKit call connected - creating call object');
               _incomingInvite = receivedMessage.inviteParams!;
-              
-              // Create call object with CallHandler for state changes
-              _call = Call(
-                _telnyxClient.txSocket, 
-                _telnyxClient, 
-                _telnyxClient.sessid,
-                '', // ringtone path
-                '', // ringback path
-                CallHandler((state) {
-                  print('📞 CallKit call state changed: $state');
-                  _handleCallStateChange(state);
-                }, null),
-                () {}, // callEnded callback
-                false, // debug
-              );
-              _call!.callId = _incomingInvite!.callID;
-              _call!.callState = CallState.ringing;
-              
-              // Start call state monitoring for CallKit calls
-              _startCallStateMonitoring();
               
               // Fix Android incoming audio routing
               if (Platform.isAndroid) {
@@ -794,7 +638,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
               // Don't show incoming call UI, just process the connection
               // Navigate to call screen when CallKit call is established
               _navigateToCallScreen();
-    } else {
+            } else {
               _handleIncomingCall(receivedMessage.inviteParams!);
             }
           }
@@ -820,102 +664,15 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   void _handleIncomingCall(IncomingInviteParams inviteParams) {
     print('📞 Incoming call from: ${inviteParams.callerIdNumber}');
     
-    // Reset push call state for new incoming calls
-    _isPushCallInProgress = false;
-    
     _incomingInvite = inviteParams;
     _status = 'Incoming call from ${inviteParams.callerIdNumber}';
     
-    // Check app lifecycle state
-    print('📱 App lifecycle state: $_appLifecycleState');
-    
-    // Only show CallKit for true background state (not just paused)
-    if (_appLifecycleState == AppLifecycleState.paused) {
-      // App is in background - show CallKit notification only if not already showing
-      print('📱 App in background - showing CallKit notification');
-      _isPushCallInProgress = true; // Set this only for background calls
-      _showCallKitForIncomingCall(inviteParams);
-    } else {
-      // App is in foreground - show in-app UI
-      print('📱 App in foreground - showing in-app UI');
-      // Navigate to home page to show incoming call banner
-      if (navigatorKey.currentState?.canPop() == true) {
-        navigatorKey.currentState!.popUntil((route) => route.isFirst);
-      }
+    // Navigate to home page to show incoming call banner
+    if (navigatorKey.currentState?.canPop() == true) {
+      navigatorKey.currentState!.popUntil((route) => route.isFirst);
     }
     
     notifyListeners();
-  }
-  
-  /// Show CallKit notification for incoming call when app is in background
-  Future<void> _showCallKitForIncomingCall(IncomingInviteParams inviteParams) async {
-    print('📱 Showing CallKit for background incoming call');
-    
-    try {
-      final callId = inviteParams.callID;
-      final callerName = inviteParams.callerIdName ?? 'Unknown Caller';
-      final callerNumber = inviteParams.callerIdNumber ?? 'Unknown Number';
-      
-      final params = CallKitParams(
-        id: callId,
-        nameCaller: callerName,
-        appName: 'Adit Telnyx',
-        handle: callerNumber,
-        type: 0,
-        duration: 45000,
-        textAccept: 'Accept',
-        textDecline: 'Decline',
-        missedCallNotification: const NotificationParams(
-          showNotification: true,
-          isShowCallback: true,
-          subtitle: 'Missed call',
-          callbackText: 'Call back',
-        ),
-        android: const AndroidParams(
-          isCustomNotification: true,
-          isShowLogo: true,
-          ringtonePath: 'system_ringtone_default',
-          backgroundColor: '#0955fa',
-          actionColor: '#4CAF50',
-          textColor: '#ffffff',
-          incomingCallNotificationChannelName: 'Incoming Call',
-          missedCallNotificationChannelName: 'Missed Call',
-          isShowCallID: false,
-          isShowFullLockedScreen: true,
-        ),
-        ios: const IOSParams(
-          iconName: 'CallKitLogo',
-          handleType: 'generic',
-          supportsVideo: false,
-          maximumCallGroups: 2,
-          maximumCallsPerCallGroup: 1,
-          audioSessionMode: 'default',
-          audioSessionActive: true,
-          audioSessionPreferredSampleRate: 44100.0,
-          audioSessionPreferredIOBufferDuration: 0.005,
-          supportsDTMF: true,
-          supportsHolding: true,
-          supportsGrouping: false,
-          supportsUngrouping: false,
-          ringtonePath: 'system_ringtone_default',
-        ),
-        extra: {
-          'metadata': jsonEncode({
-            'call_id': callId,
-            'caller_name': callerName,
-            'caller_number': callerNumber,
-            'voice_sdk_id': _voiceSdkId ?? 'default',
-          })
-        },
-      );
-      
-      print('📱 Showing CallKit notification for background call...');
-      await FlutterCallkitIncoming.showCallkitIncoming(params);
-      print('✅ CallKit notification shown for background call');
-      
-    } catch (e) {
-      print('❌ Error showing CallKit for background call: $e');
-    }
   }
   
   
@@ -939,46 +696,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
   
-  // Handle push notifications using Telnyx SDK
-  Future<void> handlePushNotification(PushMetaData pushMetaData) async {
-    try {
-      print('📱 Handling push notification with Telnyx SDK...');
-      
-      // Get the current notification token (FCM or VoIP)
-      String? notificationToken;
-      try {
-        notificationToken = await FirebaseMessaging.instance.getToken();
-        print('📱 Using FCM token for push handling: ${notificationToken?.substring(0, 20)}...');
-      } catch (e) {
-        print('❌ Error getting FCM token: $e');
-      }
-      
-      // Create credential config
-      final config = CredentialConfig(
-        sipUser: _sipUser,
-        sipPassword: _sipPassword,
-        sipCallerIDName: _callerIdName,
-        sipCallerIDNumber: _callerIdNumber,
-        notificationToken: notificationToken,
-        debug: true,
-        logLevel: LogLevel.all,
-        customLogger: MyCustomLogger(),
-      );
-      
-      // Create token config
-      final tokenConfig = TokenConfig(
-        notificationToken: notificationToken,
-      );
-      
-      // Handle the push notification using Telnyx SDK
-      _telnyxClient.handlePushNotification(pushMetaData, config, tokenConfig);
-      print('✅ Push notification handled by Telnyx SDK');
-      
-    } catch (e) {
-      print('❌ Error handling push notification: $e');
-    }
-  }
-  
   void _setupCallKitListeners() {
     FlutterCallkitIncoming.onEvent.listen((CallEvent? event) async {
       if (event == null) return;
@@ -997,12 +714,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
           await _handleCallKitDecline(event);
           break;
         case Event.actionCallEnded:
-          print('📱 CallKit call ended event received');
-          // Don't call endCall() here as it's already handled by _handleCallStateChange
-          // Just ensure notifications are cleared
-          FlutterCallkitIncoming.endAllCalls().catchError((e) {
-            print('⚠️ Error clearing CallKit notifications in event handler: $e');
-          });
+          await endCall();
           break;
         default:
           break;
@@ -1064,12 +776,17 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
           'voice_sdk_id': voiceSdkId,
         };
         
-        // Set push metadata for Telnyx SDK with isAnswer: true
-        TelnyxClient.setPushMetaData(metadata, isAnswer: true, isDecline: false);
-        print('✅ Push metadata set with isAnswer: true');
+        // Also store in service for processing
+        _pendingAcceptedCall = globalCallKitCallInfo;
         
-        // Handle the push notification using Telnyx SDK
-        await _handlePushNotification();
+        // For runtime accepts, just process the call
+        _isPushCallInProgress = true;
+        _status = 'Accepting call...';
+        
+        print('🚀 Runtime CallKit Accept: Processing call');
+        
+        // Process immediately since app is already connected
+        await _processCallKitAccept();
         
         notifyListeners();
       }
@@ -1083,22 +800,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     print('❌ CallKit Decline pressed');
     
     try {
-      // Extract metadata from the event
-      final extra = event.body['extra'];
-      final extraMap = extra is Map ? Map<String, dynamic>.from(extra) : null;
-      
-      if (extraMap != null && extraMap['metadata'] != null) {
-        final metadataString = extraMap['metadata'] as String;
-        final metadata = jsonDecode(metadataString);
-        
-        // Set push metadata for Telnyx SDK with isDecline: true
-        TelnyxClient.setPushMetaData(metadata, isAnswer: false, isDecline: true);
-        print('✅ Push metadata set with isDecline: true');
-        
-        // Handle the push notification using Telnyx SDK (simplified decline)
-        await _handlePushNotification();
-      }
-      
       // Clear incoming call state
       _incomingInvite = null;
       _status = _isConnected ? 'Connected' : 'Disconnected';
@@ -1253,19 +954,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       _isCallInProgress = true;
       _status = 'Calling $destination...';
       
-      // Start call duration timer
-      _startCallDurationTimer();
-      
-      // Start call state monitoring
-      _startCallStateMonitoring();
-      
-      // Fix Android audio routing for outgoing calls
-      if (Platform.isAndroid) {
-            Future.delayed(const Duration(milliseconds: 500), () {
-          _forceAndroidAudioOutput();
-        });
-      }
-      
       // Navigate to call screen
       navigatorKey.currentState?.pushNamed('/call');
       
@@ -1297,12 +985,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       _isCallInProgress = true;
       _status = 'Call connected';
       
-      // Start call duration timer
-      _startCallDurationTimer();
-      
-      // Start call state monitoring
-      _startCallStateMonitoring();
-      
       // Fix Android incoming audio routing for regular accepts
       if (Platform.isAndroid) {
         Future.delayed(const Duration(milliseconds: 300), () {
@@ -1323,49 +1005,25 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   /// Decline an incoming call
   Future<void> declineCall() async {
     try {
-      print('❌ Declining incoming call...');
-      
       if (_incomingInvite != null) {
-        // Create a call instance to decline it properly
+        // Create a call instance to decline it
         final call = Call(
           _telnyxClient.txSocket, 
           _telnyxClient, 
           _telnyxClient.sessid,
           '', // ringtone path
           '', // ringback path
-          CallHandler((state) {
-            print('📞 Call state changed: $state');
-            _handleCallStateChange(state);
-          }, null),
+          CallHandler((state) {}, null),
           () {}, // callEnded callback
           false, // debug
         );
         call.callId = _incomingInvite!.callID;
         call.callState = CallState.ringing;
-        
-        // Reject the call with proper SIP response
         call.endCall(); // This will reject with USER_BUSY
-        print('✅ Call rejected with USER_BUSY');
       }
       
-      // Clear incoming call state
       _incomingInvite = null;
       _status = _isConnected ? 'Connected' : 'Disconnected';
-      
-      // Clear any CallKit notifications
-      try {
-        await FlutterCallkitIncoming.endAllCalls();
-        print('✅ Cleared CallKit notifications');
-      } catch (e) {
-        print('⚠️ Error clearing CallKit notifications: $e');
-      }
-      
-      // Clear any system notifications
-      try {
-        await FlutterCallkitIncoming.endAllCalls();
-          } catch (e) {
-        print('⚠️ Error clearing system notifications: $e');
-      }
       
       notifyListeners();
     } catch (e) {
@@ -1384,20 +1042,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       _isCallInProgress = false;
       _isPushCallInProgress = false;
       _status = _isConnected ? 'Connected' : 'Disconnected';
-      
-      // Stop call duration timer
-      _stopCallDurationTimer();
-      
-      // Stop call state monitoring
-      _stopCallStateMonitoring();
-      
-      // Clear all CallKit notifications
-      try {
-        await FlutterCallkitIncoming.endAllCalls();
-        print('✅ Cleared all CallKit notifications');
-    } catch (e) {
-        print('⚠️ Error clearing CallKit notifications: $e');
-      }
       
       // Reset CallKit launch flag and clear global call info
       if (_isLaunchingFromCallKitAccept) {
@@ -1510,180 +1154,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   }
   
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    _appLifecycleState = state;
-    
-    print('📱 App lifecycle changed to: $state');
-    
-    switch (state) {
-      case AppLifecycleState.resumed:
-        print('📱 App resumed - ensuring connection is active');
-        _ensureConnectionActive();
-        break;
-      case AppLifecycleState.paused:
-        print('📱 App paused - maintaining background connection');
-        _handleAppPaused();
-        break;
-      case AppLifecycleState.detached:
-        print('📱 App detached - cleaning up');
-        break;
-      case AppLifecycleState.inactive:
-        print('📱 App inactive - maintaining connection');
-        break;
-      case AppLifecycleState.hidden:
-        print('📱 App hidden - maintaining connection');
-        break;
-    }
-  }
-  
-  /// Ensure connection is active when app resumes
-  void _ensureConnectionActive() {
-    if (!_isConnected && _telnyxClient != null) {
-      print('🔄 Reconnecting after app resume...');
-      // Reconnect if needed
-      _status = 'Reconnecting...';
-      notifyListeners();
-    }
-  }
-  
-  /// Handle app going to background
-  void _handleAppPaused() {
-    print('📱 App paused - maintaining WebSocket connection for background calls');
-    // The WebSocket connection should remain active for background calls
-    // No need to disconnect, just ensure it stays connected
-    if (_telnyxClient.isConnected()) {
-      print('✅ WebSocket connection maintained for background state');
-    }
-  }
-  
-  /// Show a toast message
-  void _showToast(String message) {
-    try {
-      if (navigatorKey.currentState != null) {
-        final context = navigatorKey.currentState!.context;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.grey[800],
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
-      }
-      } catch (e) {
-      print('⚠️ Error showing toast: $e');
-    }
-  }
-
-  /// Handle call state changes
-  void _handleCallStateChange(CallState state) {
-    print('📞 Call state changed to: $state');
-    
-    switch (state) {
-      case CallState.done:
-        print('📞 Call ended - cleaning up');
-        _isCallInProgress = false;
-        _isPushCallInProgress = false;
-        _call = null;
-        _status = _isConnected ? 'Connected' : 'Disconnected';
-        
-        // Stop call duration timer
-        _stopCallDurationTimer();
-        
-        // Stop call state monitoring
-        _stopCallStateMonitoring();
-        
-        // Clear all CallKit notifications
-        FlutterCallkitIncoming.endAllCalls().catchError((e) {
-          print('⚠️ Error clearing CallKit notifications: $e');
-        });
-        
-        // Navigate back to home and show toast
-        if (navigatorKey.currentState?.canPop() == true) {
-          navigatorKey.currentState!.popUntil((route) => route.isFirst);
-          
-          // Show toast message after a short delay to ensure navigation is complete
-          Future.delayed(Duration(milliseconds: 500), () {
-            _showToast('Call ended');
-          });
-        }
-        
-        notifyListeners();
-        break;
-      case CallState.active:
-        print('📞 Call connected');
-        _isCallInProgress = true;
-        _status = 'Call connected';
-        notifyListeners();
-        break;
-      case CallState.ringing:
-        print('📞 Call ringing');
-        _status = 'Call ringing';
-        notifyListeners();
-        break;
-      default:
-        print('📞 Call state: $state');
-        break;
-    }
-  }
-  
-  /// Start call duration timer
-  void _startCallDurationTimer() {
-    _callStartTime = DateTime.now();
-    _callDuration = Duration.zero;
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_callStartTime != null) {
-        _callDuration = DateTime.now().difference(_callStartTime!);
-        notifyListeners();
-      }
-    });
-    print('⏱️ Started call duration timer');
-  }
-  
-  /// Stop call duration timer
-  void _stopCallDurationTimer() {
-    _durationTimer?.cancel();
-    _durationTimer = null;
-    _callStartTime = null;
-    _callDuration = Duration.zero;
-    print('⏱️ Stopped call duration timer');
-  }
-  
-  /// Start call state monitoring
-  void _startCallStateMonitoring() {
-    _callStateMonitor?.cancel();
-    _callStateMonitor = Timer.periodic(Duration(milliseconds: 500), (timer) {
-      if (_call != null) {
-        final currentState = _call!.callState;
-        if (currentState != _lastCallState) {
-          print('📞 Call state changed from $_lastCallState to $currentState');
-          _lastCallState = currentState;
-          _handleCallStateChange(currentState);
-        }
-      } else {
-        // Call ended, stop monitoring
-        _stopCallStateMonitoring();
-      }
-    });
-  }
-  
-  /// Stop call state monitoring
-  void _stopCallStateMonitoring() {
-    _callStateMonitor?.cancel();
-    _callStateMonitor = null;
-    _lastCallState = null;
-  }
-  
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _stopCallDurationTimer();
-    _stopCallStateMonitoring();
     _call?.endCall();
     super.dispose();
   }
@@ -1731,14 +1202,14 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Theme.of(context).colorScheme.surface,
       ),
       body: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Connection status
-                Container(
+          children: [
+            // Connection status
+            Container(
               padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
+              decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
@@ -1747,9 +1218,9 @@ class _HomePageState extends State<HomePage> {
                     : Color(0xFFFF3B30).withOpacity(0.3),
                   width: 1,
                 ),
-                  ),
-                  child: Row(
-                    children: [
+              ),
+              child: Row(
+                children: [
                   Container(
                     width: 16,
                     height: 16,
@@ -1771,7 +1242,7 @@ class _HomePageState extends State<HomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                      Text(
+                        Text(
                           telnyxService.isConnected ? 'Connected to Telnyx' : 'Disconnected',
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
@@ -1789,17 +1260,17 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ],
-                  ),
-                ),
-                
-                const SizedBox(height: 24),
-                
+              ),
+            ),
+            
+            const SizedBox(height: 24),
+            
             // Incoming call banner
             if (telnyxService.incomingInvite != null)
-                  Container(
+              Container(
                 padding: const EdgeInsets.all(20),
                 margin: const EdgeInsets.only(bottom: 24),
-                    decoration: BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Color(0xFF00D4AA).withOpacity(0.1), Color(0xFF6C5CE7).withOpacity(0.1)],
                     begin: Alignment.topLeft,
@@ -1823,26 +1294,26 @@ class _HomePageState extends State<HomePage> {
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             color: Color(0xFF00D4AA),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           child: const Icon(Icons.phone_in_talk, color: Colors.white, size: 20),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                    child: Column(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                            children: [
                               const Text('Incoming Call'),
                               Text(
                                 telnyxService.incomingInvite?.callerIdNumber ?? 'Unknown',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                      ],
-                    ),
-                const SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -1864,7 +1335,7 @@ class _HomePageState extends State<HomePage> {
                             onPressed: telnyxService.declineCall,
                             icon: const Icon(Icons.call_end),
                             label: const Text('Decline'),
-                      style: ElevatedButton.styleFrom(
+                            style: ElevatedButton.styleFrom(
                               backgroundColor: Color(0xFFFF3B30),
                               foregroundColor: Colors.white,
                               elevation: 4,
@@ -1893,13 +1364,13 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 16),
             
             // Call button
-                    ElevatedButton.icon(
+            ElevatedButton.icon(
               onPressed: telnyxService.isConnected && !telnyxService.isCallInProgress
                   ? () => telnyxService.makeCall(_phoneController.text.trim())
                   : null,
               icon: const Icon(Icons.call, size: 20),
               label: const Text('Call Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                      style: ElevatedButton.styleFrom(
+              style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFF34C759),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1908,16 +1379,16 @@ class _HomePageState extends State<HomePage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-                ),
-                
-                const SizedBox(height: 16),
-                
+            ),
+            
+            const SizedBox(height: 16),
+            
             // Test CallKit button
-                    ElevatedButton.icon(
+            ElevatedButton.icon(
               onPressed: () => telnyxService.testCallKitNotification(),
               icon: const Icon(Icons.notifications_active, size: 20),
               label: const Text('Test CallKit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                      style: ElevatedButton.styleFrom(
+              style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFFFF9500),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1956,8 +1427,8 @@ class _HomePageState extends State<HomePage> {
                     '• CallKit integration',
                     style: TextStyle(fontSize: 12),
                   ),
-              ],
-            ),
+                ],
+              ),
             ),
           ],
         ),
@@ -2006,62 +1477,7 @@ class _CallPageState extends State<CallPage> {
     // Show controls if we have an active call or we're in a CallKit call
     return service.isCallInProgress || _isLaunchingFromCallKitAccept || service.call != null;
   }
-  
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
-    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
-    return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
-  }
-  
-  Widget _buildCallControlButton({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required Color activeColor,
-    required VoidCallback onPressed,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-              children: [
-        Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            color: isActive ? activeColor : Theme.of(context).colorScheme.surfaceContainer,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: (isActive ? activeColor : Colors.grey).withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(30),
-              onTap: onPressed,
-              child: Icon(
-                icon,
-                color: isActive ? Colors.white : Theme.of(context).colorScheme.onSurface,
-                size: 24,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-          ),
-        ),
-      ],
-    );
-  }
-  
+
   @override
   Widget build(BuildContext context) {
     final telnyxService = context.watch<TelnyxService>();
@@ -2086,18 +1502,18 @@ class _CallPageState extends State<CallPage> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
               const SizedBox(height: 20),
               
               // Call info
-                      Container(
+              Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
+                decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Column(
                   children: [
@@ -2107,126 +1523,69 @@ class _CallPageState extends State<CallPage> {
                       child: Icon(Icons.person, size: 50, color: Colors.white),
                     ),
                     const SizedBox(height: 12),
-                Text(
+                    Text(
                       _getCallerDisplayName(telnyxService),
                       style: Theme.of(context).textTheme.headlineSmall,
                       textAlign: TextAlign.center,
-                ),
+                    ),
                     const SizedBox(height: 6),
-                Text(
+                    Text(
                       telnyxService.status,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    // Call duration display - WhatsApp style
-                    if (telnyxService.isCallInProgress && telnyxService.callDuration.inSeconds > 0) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(25),
-                          border: Border.all(color: Colors.white.withOpacity(0.3)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                      ),
                   ],
                 ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.access_time,
-                              color: Colors.white.withOpacity(0.9),
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _formatDuration(telnyxService.callDuration),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 20,
-                                letterSpacing: 1.5,
-                              ),
-                ),
-              ],
-            ),
-                      ),
-                    ],
-            ],
-          ),
-        ),
+              ),
               
               const SizedBox(height: 30),
               
-              // Call controls - WhatsApp style
-                      Container(
-                padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: Colors.white.withOpacity(0.2)),
-                          boxShadow: [
-                            BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                              blurRadius: 20,
-                      offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // Mute button
-                    _buildCallControlButton(
-                      icon: _isMuted ? Icons.mic_off : Icons.mic,
-                      label: 'Mute',
-                      isActive: _isMuted,
-                      activeColor: Colors.red,
-                      onPressed: () {
-                        telnyxService.toggleMute();
-                        setState(() {
-                          _isMuted = !_isMuted;
-                        });
-                      },
-                    ),
-                    
-                    // Speaker button
-                    _buildCallControlButton(
-                      icon: _isSpeakerOn ? Icons.volume_up : Icons.hearing,
-                      label: 'Speaker',
-                      isActive: _isSpeakerOn,
-                      activeColor: Colors.blue,
-                      onPressed: () {
-                        final newSpeakerState = !_isSpeakerOn;
-                        telnyxService.toggleSpeaker(newSpeakerState);
-                        setState(() {
-                          _isSpeakerOn = newSpeakerState;
-                        });
-                      },
-                    ),
-                    
-                    // Hold button
-                    _buildCallControlButton(
-                      icon: _isOnHold ? Icons.play_arrow : Icons.pause,
-                      label: 'Hold',
-                      isActive: _isOnHold,
-                      activeColor: Colors.orange,
-                      onPressed: () {
-                        telnyxService.toggleHold();
-                        setState(() {
-                          _isOnHold = !_isOnHold;
-                        });
-                      },
-                ),
-              ],
-            ),
+              // Call controls
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Mute button
+                  FloatingActionButton(
+                    heroTag: "mute",
+                    onPressed: () {
+                      telnyxService.toggleMute();
+                      setState(() {
+                        _isMuted = !_isMuted;
+                      });
+                    },
+                    backgroundColor: _isMuted ? Colors.red : Theme.of(context).colorScheme.surfaceContainer,
+                    child: Icon(_isMuted ? Icons.mic_off : Icons.mic),
+                  ),
+                  
+                  // Speaker button
+                  FloatingActionButton(
+                    heroTag: "speaker",
+                    onPressed: () {
+                      final newSpeakerState = !_isSpeakerOn;
+                      telnyxService.toggleSpeaker(newSpeakerState);
+                      setState(() {
+                        _isSpeakerOn = newSpeakerState;
+                      });
+                    },
+                    backgroundColor: _isSpeakerOn ? Colors.blue : Theme.of(context).colorScheme.surfaceContainer,
+                    child: Icon(_isSpeakerOn ? Icons.volume_up : Icons.hearing),
+                  ),
+                  
+                  // Hold button
+                  FloatingActionButton(
+                    heroTag: "hold",
+                    onPressed: () {
+                      telnyxService.toggleHold();
+                      setState(() {
+                        _isOnHold = !_isOnHold;
+                      });
+                    },
+                    backgroundColor: _isOnHold ? Colors.orange : Theme.of(context).colorScheme.surfaceContainer,
+                    child: Icon(_isOnHold ? Icons.play_arrow : Icons.pause),
+                  ),
+                ],
               ),
               
               const SizedBox(height: 30),
@@ -2235,13 +1594,13 @@ class _CallPageState extends State<CallPage> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
+                decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                  child: Column(
-                    children: [
-                      Text(
+                child: Column(
+                  children: [
+                    Text(
                       'DTMF Keypad',
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
@@ -2262,57 +1621,38 @@ class _CallPageState extends State<CallPage> {
                               padding: const EdgeInsets.all(8),
                             ),
                             child: Text(tone, style: const TextStyle(fontSize: 18)),
-                      ),
-                    ],
-                  ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
               
               const SizedBox(height: 30),
               
-              
-              // End call button - WhatsApp style
-              Container(
-                width: double.infinity,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(35),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.withOpacity(0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(35),
-                    onTap: () => telnyxService.endCall(),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.call_end, color: Colors.white, size: 28),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'End Call',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
+              // Test audio button (Android only)
+              if (Platform.isAndroid)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: FloatingActionButton.extended(
+                    heroTag: "testAudio",
+                    onPressed: () => telnyxService.testAndroidAudioRouting(),
+                    backgroundColor: Colors.orange,
+                    icon: const Icon(Icons.hearing, color: Colors.white),
+                    label: const Text('Test Audio', style: TextStyle(color: Colors.white)),
                   ),
                 ),
-                ),
+              
+              // End call button
+              FloatingActionButton.extended(
+                heroTag: "endCall",
+                onPressed: () => telnyxService.endCall(),
+                backgroundColor: Colors.red,
+                icon: const Icon(Icons.call_end, color: Colors.white),
+                label: const Text('End Call', style: TextStyle(color: Colors.white)),
               ),
-                      
-                      const SizedBox(height: 20),
+              
+              const SizedBox(height: 20),
             ],
           ),
         ),
