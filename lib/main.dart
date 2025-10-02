@@ -404,8 +404,9 @@ Future<void> _handleVoIPMethodCall(MethodCall call) async {
     final token = call.arguments as String?;
     if (token != null) {
       print('📱 Received VoIP token: ${token.substring(0, 20)}...');
-      // Store the VoIP token for use in push notifications
-      // The Telnyx SDK will automatically use this token when connecting
+      // Store the VoIP token in TelnyxService for use in push notifications
+      final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
+      telnyxService.setVoipToken(token);
       print('📱 VoIP token ready for Telnyx SDK');
     }
   } else if (call.method == 'appDidBecomeActive') {
@@ -646,6 +647,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   // Track Voice SDK ID
   String? _voiceSdkId;
   
+  // Store VoIP token for push notifications
+  String? _voipToken;
+  
   // Call state monitoring
   Timer? _callStateMonitor;
   CallState? _lastCallState;
@@ -658,6 +662,44 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   IncomingInviteParams? get incomingInvite => _incomingInvite;
   Map<String, dynamic>? get pendingAcceptedCall => _pendingAcceptedCall;
   Duration get callDuration => _callDuration;
+  
+  // Set VoIP token and reconnect if needed
+  void setVoipToken(String token) {
+    _voipToken = token;
+    print('📱 VoIP token stored in TelnyxService: ${token.substring(0, 20)}...');
+    
+    // If already connected, reconnect with VoIP token for better push notifications
+    if (_isConnected) {
+      print('📱 Reconnecting with VoIP token for improved push notifications...');
+      _reconnectWithVoipToken();
+    }
+  }
+  
+  // Reconnect with VoIP token
+  Future<void> _reconnectWithVoipToken() async {
+    try {
+      if (_voipToken == null) return;
+      
+      print('📱 Reconnecting Telnyx with VoIP token...');
+      
+      final config = CredentialConfig(
+        sipUser: _sipUser,
+        sipPassword: _sipPassword,
+        sipCallerIDName: _callerIdName,
+        sipCallerIDNumber: _callerIdNumber,
+        notificationToken: _voipToken,
+        debug: true,
+        logLevel: LogLevel.all,
+        customLogger: MyCustomLogger(),
+      );
+      
+      _telnyxClient.connectWithCredential(config);
+      print('✅ Reconnected with VoIP token');
+      
+    } catch (e) {
+      print('❌ Error reconnecting with VoIP token: $e');
+    }
+  }
   
   TelnyxService() {
     WidgetsBinding.instance.addObserver(this);
@@ -684,12 +726,20 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         print('❌ Error getting FCM token: $e');
       }
     
+    // Use VoIP token for push notifications if available, otherwise fallback to FCM
+    String? notificationToken = _voipToken ?? fcmToken;
+    if (_voipToken != null) {
+      print('📱 Using VoIP token for push notifications: ${_voipToken!.substring(0, 20)}...');
+    } else {
+      print('📱 Using FCM token for push notifications: ${fcmToken?.substring(0, 20)}...');
+    }
+    
     final config = CredentialConfig(
       sipUser: _sipUser,
       sipPassword: _sipPassword,
       sipCallerIDName: _callerIdName,
         sipCallerIDNumber: _callerIdNumber,
-        notificationToken: fcmToken,
+        notificationToken: notificationToken,
         debug: true,
         logLevel: LogLevel.all,
         customLogger: MyCustomLogger(),
