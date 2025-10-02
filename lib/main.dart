@@ -702,7 +702,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         debug: true,
         logLevel: LogLevel.all,
         customLogger: MyCustomLogger(),
-        pushEnvironment: 'production', // Explicitly set for iOS production
       );
       
       _telnyxClient.connectWithCredential(config);
@@ -758,7 +757,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         debug: true,
         logLevel: LogLevel.all,
         customLogger: MyCustomLogger(),
-        pushEnvironment: 'production', // Explicitly set for iOS production
       );
       
       _telnyxClient = TelnyxClient();
@@ -1030,7 +1028,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         debug: true,
         logLevel: LogLevel.all,
         customLogger: MyCustomLogger(),
-        pushEnvironment: 'production', // Explicitly set for iOS production
       );
       
       // Create token config
