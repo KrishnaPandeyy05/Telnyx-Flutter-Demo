@@ -4,8 +4,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+// Firebase is Android-only in this app. Guard imports via runtime checks before use.
+import 'package:firebase_core/firebase_core.dart' as fb_core;
+import 'package:firebase_messaging/firebase_messaging.dart' as fb_msg;
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
@@ -58,8 +61,10 @@ class MyCustomLogger extends CustomLogger {
 
 // Background message handler for Firebase
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+Future<void> _firebaseMessagingBackgroundHandler(fb_msg.RemoteMessage message) async {
+  // Android-only background handler
+  if (!Platform.isAndroid) return;
+  await fb_core.Firebase.initializeApp();
   print('📱 Background message received: ${message.data}');
   
   final data = message.data;
@@ -123,6 +128,25 @@ Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
   print('📱 Showing CallKit for background push: $data');
   
   try {
+    // Missed-call timeout handling
+    const int CALL_MISSED_TIMEOUT = 60; // seconds
+    try {
+      final sentTimeRaw = data['sentTime'] ?? data['google.sent_time'];
+      if (sentTimeRaw != null) {
+        final sentEpochMs = sentTimeRaw is int ? sentTimeRaw : int.tryParse(sentTimeRaw.toString());
+        if (sentEpochMs != null) {
+          final now = DateTime.now();
+          final sentTime = DateTime.fromMillisecondsSinceEpoch(sentEpochMs);
+          final diff = now.difference(sentTime).inSeconds;
+          if (diff > CALL_MISSED_TIMEOUT) {
+            print('⏱️ Push too old ($diff s) -> flag as missed; skip CallKit');
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Missed-call timeout check failed: $e');
+    }
     // Check active calls to verify CallKit is working
     final activeCalls = await FlutterCallkitIncoming.activeCalls();
     print('📱 Current active calls: ${activeCalls.length}');
@@ -226,8 +250,11 @@ const MethodChannel _voipMethodChannel = MethodChannel('com.adit.callapp/voip');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // Initialize Firebase only on Android
+  if (Platform.isAndroid) {
+    await fb_core.Firebase.initializeApp();
+    fb_msg.FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  }
   
   await _requestPermissions();
   
@@ -749,30 +776,34 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     print('🚀 Starting TelnyxService initialization...');
     
     try {
-      // Set up Firebase messaging
-      _setupFirebaseMessaging();
+      // Set up Firebase messaging (Android only)
+      if (Platform.isAndroid) {
+        _setupFirebaseMessaging();
+      }
       
       // Set up CallKit listeners
       _setupCallKitListeners();
       
       // Initialize Telnyx client
       String? fcmToken;
-      try {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-        print('📱 FCM Token obtained: ${fcmToken?.substring(0, 20)}...');
-      } catch (e) {
-        print('❌ Error getting FCM token: $e');
+      if (Platform.isAndroid) {
+        try {
+          fcmToken = await fb_msg.FirebaseMessaging.instance.getToken();
+          print('🤖 FCM Token (Android): ${fcmToken?.substring(0, 20)}...');
+        } catch (e) {
+          print('❌ Error getting FCM token (Android): $e');
+        }
       }
     
     // Use VoIP token for push notifications if available, otherwise fallback to FCM
-    String? notificationToken = _voipToken ?? globalVoipToken ?? fcmToken;
-    if (_voipToken != null) {
+    String? notificationToken = Platform.isIOS ? (_voipToken ?? globalVoipToken) : (fcmToken ?? _voipToken ?? globalVoipToken);
+    if (Platform.isIOS && _voipToken != null) {
       print('📱 Using stored VoIP token for push notifications: ${_voipToken!.substring(0, 20)}...');
-    } else if (globalVoipToken != null) {
+    } else if (Platform.isIOS && globalVoipToken != null) {
       print('📱 Using global VoIP token for push notifications: ${globalVoipToken!.substring(0, 20)}...');
       _voipToken = globalVoipToken; // Store it for future use
-    } else {
-      print('📱 Using FCM token for push notifications: ${fcmToken?.substring(0, 20)}...');
+    } else if (Platform.isAndroid) {
+      print('🤖 Using FCM token for push notifications: ${fcmToken?.substring(0, 20)}...');
     }
     
     // If we have a VoIP token, we'll reconnect with it after initial connection
@@ -1020,9 +1051,12 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   }
   
   
-  void _setupFirebaseMessaging() {
+void _setupFirebaseMessaging() {
+    if (!Platform.isAndroid) {
+      return;
+    }
     // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    fb_msg.FirebaseMessaging.onMessage.listen((fb_msg.RemoteMessage message) {
       print('📱 Foreground message received: ${message.data}');
       
       final data = message.data;
@@ -1035,7 +1069,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     });
     
     // Handle app opened from notification
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    fb_msg.FirebaseMessaging.onMessageOpenedApp.listen((fb_msg.RemoteMessage message) {
       print('📱 App opened from push notification: ${message.data}');
     });
   }
@@ -1045,18 +1079,19 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     try {
       print('📱 Handling push notification with Telnyx SDK...');
       
-      // Use VoIP token for push handling (preferred for iOS)
-      String? notificationToken = _voipToken ?? globalVoipToken;
+      // Use platform-specific token: iOS uses VoIP, Android uses FCM
+      String? notificationToken;
+      if (Platform.isIOS) {
+        notificationToken = _voipToken ?? globalVoipToken;
+      } else if (Platform.isAndroid) {
+        try {
+          notificationToken = await fb_msg.FirebaseMessaging.instance.getToken();
+        } catch (e) {
+          print('❌ Error getting FCM token for push handling: $e');
+        }
+      }
       if (notificationToken != null) {
         print('📱 Using VoIP token for push handling: ${notificationToken.substring(0, 20)}...');
-      } else {
-        // Fallback to FCM token if VoIP token not available
-        try {
-          notificationToken = await FirebaseMessaging.instance.getToken();
-          print('📱 Using FCM token for push handling: ${notificationToken?.substring(0, 20)}...');
-        } catch (e) {
-          print('❌ Error getting FCM token: $e');
-        }
       }
       
       // Create credential config
@@ -1257,10 +1292,12 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       
       // Get fresh config
       String? fcmToken;
-      try {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-      } catch (e) {
-        print('❌ Error getting FCM token: $e');
+      if (Platform.isAndroid) {
+        try {
+          fcmToken = await fb_msg.FirebaseMessaging.instance.getToken();
+        } catch (e) {
+          print('❌ Error getting FCM token: $e');
+        }
       }
       
       final config = CredentialConfig(
@@ -1268,7 +1305,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         sipPassword: _sipPassword,
         sipCallerIDName: _callerIdName,
         sipCallerIDNumber: _callerIdNumber,
-        notificationToken: _voipToken ?? globalVoipToken ?? fcmToken,
+        notificationToken: Platform.isIOS ? (_voipToken ?? globalVoipToken) : (fcmToken ?? _voipToken ?? globalVoipToken),
         debug: true,
         logLevel: LogLevel.all,
         customLogger: MyCustomLogger(),
@@ -1317,10 +1354,12 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       
       // Get fresh config
       String? fcmToken;
-      try {
-        fcmToken = await FirebaseMessaging.instance.getToken();
-      } catch (e) {
-        print('❌ Error getting FCM token: $e');
+      if (Platform.isAndroid) {
+        try {
+          fcmToken = await fb_msg.FirebaseMessaging.instance.getToken();
+        } catch (e) {
+          print('❌ Error getting FCM token: $e');
+        }
       }
       
       final config = CredentialConfig(
@@ -1328,7 +1367,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         sipPassword: _sipPassword,
         sipCallerIDName: _callerIdName,
         sipCallerIDNumber: _callerIdNumber,
-        notificationToken: _voipToken ?? globalVoipToken ?? fcmToken,
+        notificationToken: Platform.isIOS ? (_voipToken ?? globalVoipToken) : (fcmToken ?? _voipToken ?? globalVoipToken),
         debug: true,
         logLevel: LogLevel.all,
         customLogger: MyCustomLogger(),

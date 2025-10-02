@@ -3,7 +3,6 @@ import UIKit
 import PushKit
 import CallKit
 import AVFoundation
-import FirebaseCore
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, PKPushRegistryDelegate, CXProviderDelegate {
@@ -16,25 +15,7 @@ import FirebaseCore
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // Configure iOS Firebase SDK first - this is REQUIRED
-        print("🔥 iOS AppDelegate started - Configuring Firebase...")
-
-        // Debug: Check if GoogleService-Info.plist exists
-        if let plistPath = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") {
-            print("✅ GoogleService-Info.plist found at: \(plistPath)")
-        } else {
-            print("❌ GoogleService-Info.plist not found in bundle")
-        }
-
-        // Configure Firebase with error handling
-        do {
-            FirebaseApp.configure()
-            print("✅ Firebase configured for iOS")
-        } catch {
-            print("⚠️ Firebase configuration failed: \(error.localizedDescription)")
-            print("🔄 App will continue without Firebase (for development/testing)")
-            // Don't crash - let the app continue
-        }
+        // iOS AppDelegate started - no Firebase configuration on iOS
 
         GeneratedPluginRegistrant.register(with: self)
 
@@ -111,10 +92,8 @@ import FirebaseCore
         }
 
         guard let data = callData,
-              let callId = data["call_id"] as? String,
-              let callerName = data["caller_name"] as? String,
-              let callerNumber = data["caller_number"] as? String,
-              let voiceSdkId = data["voice_sdk_id"] as? String else {
+              let callerName = data["caller_name"] as? String ?? (payload.dictionaryPayload["caller_name"] as? String),
+              let callerNumber = data["caller_number"] as? String ?? (payload.dictionaryPayload["caller_number"] as? String) else {
             print("❌ Missing required call data in VoIP payload")
             print("📱 Available keys: \(payload.dictionaryPayload.keys)")
             if let callDataKeys = callData?.keys {
@@ -123,28 +102,49 @@ import FirebaseCore
             completion()
             return
         }
+        // Determine call ID
+        var callID = (data["call_id"] as? String) ?? (payload.dictionaryPayload["call_id"] as? String) ?? UUID().uuidString
+        if callID.isEmpty { callID = UUID().uuidString }
 
-        // Create a CXCallUpdate to describe the incoming call
+        // Prefer caller name, fall back to number
+        let displayName = callerName.isEmpty ? (callerNumber.isEmpty ? "Unknown" : callerNumber) : callerName
+
+        // Show incoming using native CallKit
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: callerNumber)
-        update.localizedCallerName = callerName
+        update.remoteHandle = CXHandle(type: .generic, value: displayName)
+        update.localizedCallerName = displayName
         update.hasVideo = false
-
-        // Report the incoming call to CallKit
-        provider?.reportNewIncomingCall(with: UUID(uuidString: callId) ?? UUID(), update: update, completion: { error in
+        provider?.reportNewIncomingCall(with: UUID(uuidString: callID) ?? UUID(), update: update, completion: { error in
             if let error = error {
-                print("Error reporting incoming call: \(error.localizedDescription)")
+                print("Error reporting incoming call (fallback): \(error.localizedDescription)")
             } else {
-                print("Successfully reported incoming call to CallKit")
-
-                // Notify Flutter side about the incoming call
-                if let flutterViewController = self.window?.rootViewController as? FlutterViewController {
-                    let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
-                    channel.invokeMethod("onIncomingCall", arguments: data)
-                }
+                print("Successfully reported incoming call to CallKit (fallback)")
             }
-            completion()
         })
+
+        // Also notify Flutter via method channel if needed
+        if let flutterViewController = self.window?.rootViewController as? FlutterViewController {
+            let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
+            channel.invokeMethod("onIncomingCall", arguments: data)
+        }
+
+        completion()
+    }
+
+    // Invalidate VoIP token - clear on iOS when APNs invalidates it
+    func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
+        print("🔄 VoIP token invalidated by APNs")
+        if let flutterViewController = window?.rootViewController as? FlutterViewController {
+            let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
+            channel.invokeMethod("onVoIPTokenReceived", arguments: "")
+        }
+    }
+
+    // Foreground restoration handler to ensure CallKit registration works when waking app
+    override func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+        print("➡️ application:continueUserActivity called")
+        // No-op for plugin; native CallKit will be triggered by incoming push
+        return true
     }
 
     // MARK: - CXProviderDelegate
