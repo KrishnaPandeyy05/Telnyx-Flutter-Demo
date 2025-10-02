@@ -409,9 +409,15 @@ Future<void> _handleVoIPMethodCall(MethodCall call) async {
       print('📱 Received VoIP token: ${token.substring(0, 20)}...');
       // Store the VoIP token in TelnyxService for use in push notifications
       try {
-        final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
-        telnyxService.setVoipToken(token);
-        print('📱 VoIP token stored in TelnyxService: ${token.substring(0, 20)}...');
+        if (navigatorKey.currentContext != null) {
+          final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
+          telnyxService.setVoipToken(token);
+          print('📱 VoIP token stored in TelnyxService: ${token.substring(0, 20)}...');
+        } else {
+          // Store globally for later use if context is not available
+          globalVoipToken = token;
+          print('📱 VoIP token stored globally for later use (context not available)');
+        }
       } catch (e) {
         print('❌ Error storing VoIP token: $e');
         // Store globally for later use
@@ -679,11 +685,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     _voipToken = token;
     print('📱 VoIP token stored in TelnyxService: ${token.substring(0, 20)}...');
     
-    // If already connected, reconnect with VoIP token for better push notifications
-    if (_isConnected) {
-      print('📱 Reconnecting with VoIP token for improved push notifications...');
-      _reconnectWithVoipToken();
-    }
+    // Always reconnect with VoIP token to ensure Telnyx uses the correct token for push notifications
+    print('📱 Reconnecting with VoIP token to update push notification token...');
+    _reconnectWithVoipToken();
   }
   
   // Reconnect with VoIP token
@@ -746,6 +750,12 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       _voipToken = globalVoipToken; // Store it for future use
     } else {
       print('📱 Using FCM token for push notifications: ${fcmToken?.substring(0, 20)}...');
+    }
+    
+    // If we have a VoIP token, we'll reconnect with it after initial connection
+    if (globalVoipToken != null && _voipToken == null) {
+      _voipToken = globalVoipToken;
+      print('📱 VoIP token available - will reconnect after initial connection');
     }
     
     final config = CredentialConfig(
@@ -812,6 +822,14 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
           final receivedMessage = message.message as ReceivedMessage;
           _voiceSdkId = receivedMessage.voiceSdkId;
           print('📱 Stored Voice SDK ID: $_voiceSdkId');
+        }
+        
+        // If we have a VoIP token, reconnect to ensure Telnyx uses it for push notifications
+        if (_voipToken != null) {
+          print('📱 Client ready - reconnecting with VoIP token to update push notifications...');
+          Future.delayed(Duration(seconds: 2), () {
+            _reconnectWithVoipToken();
+          });
         }
         break;
         
