@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.telnyxFreshApp</string>
+	<string>com.adit.callapp</string>
 	<key>PROJECT_ID</key>
 	<string>telnyx-call-demo</string>
 	<key>STORAGE_BUCKET</key>

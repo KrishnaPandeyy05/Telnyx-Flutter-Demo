@@ -219,10 +219,10 @@ Future<void> _showCallKitIncoming(Map<String, dynamic> data) async {
 }
 
 // Method channel to receive CallKit intents from native
-const MethodChannel _methodChannel = MethodChannel('com.example.telnyx_fresh_app/callkit');
+const MethodChannel _methodChannel = MethodChannel('com.adit.callapp/callkit');
 
 // Method channel to receive VoIP tokens from native
-const MethodChannel _voipMethodChannel = MethodChannel('com.example.telnyx_fresh_app/voip');
+const MethodChannel _voipMethodChannel = MethodChannel('com.adit.callapp/voip');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

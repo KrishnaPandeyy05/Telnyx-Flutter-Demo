@@ -83,7 +83,7 @@ import FirebaseCore
         // Send this token to your server for VoIP push notifications
         // You can use Flutter's method channel to send this to Dart side
         if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.example.telnyx_fresh_app/voip", binaryMessenger: flutterViewController.binaryMessenger)
+            let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
             channel.invokeMethod("onVoIPTokenReceived", arguments: deviceToken)
         }
     }
@@ -139,7 +139,7 @@ import FirebaseCore
 
                 // Notify Flutter side about the incoming call
                 if let flutterViewController = self.window?.rootViewController as? FlutterViewController {
-                    let channel = FlutterMethodChannel(name: "com.example.telnyx_fresh_app/voip", binaryMessenger: flutterViewController.binaryMessenger)
+                    let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
                     channel.invokeMethod("onIncomingCall", arguments: data)
                 }
             }
@@ -161,7 +161,7 @@ import FirebaseCore
 
         // Answer the call through the Flutter side
         if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.example.telnyx_fresh_app/callkit", binaryMessenger: flutterViewController.binaryMessenger)
+            let channel = FlutterMethodChannel(name: "com.adit.callapp/callkit", binaryMessenger: flutterViewController.binaryMessenger)
             channel.invokeMethod("answerCall", arguments: action.callUUID.uuidString)
         }
 
@@ -173,7 +173,7 @@ import FirebaseCore
 
         // End the call through the Flutter side
         if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.example.telnyx_fresh_app/callkit", binaryMessenger: flutterViewController.binaryMessenger)
+            let channel = FlutterMethodChannel(name: "com.adit.callapp/callkit", binaryMessenger: flutterViewController.binaryMessenger)
             channel.invokeMethod("endCall", arguments: action.callUUID.uuidString)
         }
 
@@ -216,7 +216,7 @@ import FirebaseCore
 
         // Check for any missed calls or pending call state
         if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.example.telnyx_fresh_app/callkit", binaryMessenger: flutterViewController.binaryMessenger)
+            let channel = FlutterMethodChannel(name: "com.adit.callapp/callkit", binaryMessenger: flutterViewController.binaryMessenger)
             channel.invokeMethod("appDidBecomeActive", arguments: nil)
         }
     }
