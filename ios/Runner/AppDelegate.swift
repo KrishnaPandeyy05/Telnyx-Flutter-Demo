@@ -3,56 +3,29 @@ import UIKit
 import PushKit
 import CallKit
 import AVFoundation
+import flutter_callkit_incoming
+import WebRTC
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, PKPushRegistryDelegate, CXProviderDelegate {
-
-    private let pushRegistry = PKPushRegistry(queue: nil)
-    private var provider: CXProvider?
-    private let callController = CXCallController()
+@objc class AppDelegate: FlutterAppDelegate, PKPushRegistryDelegate, CallkitIncomingAppDelegate {
 
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // iOS AppDelegate started - no Firebase configuration on iOS
-
         GeneratedPluginRegistrant.register(with: self)
 
-        // Configure CallKit provider
-        configureCallKitProvider()
-
-        // Register for VoIP push notifications
-        pushRegistry.delegate = self
-        pushRegistry.desiredPushTypes = [.voIP]
-
-        // Request microphone permission for VoIP calls
-        AVAudioSession.sharedInstance().requestRecordPermission { granted in
-            if granted {
-                print("Microphone permission granted for VoIP")
-            } else {
-                print("Microphone permission denied for VoIP")
-            }
-        }
+        // Setup VOIP push notifications (Telnyx requirement)
+        let mainQueue = DispatchQueue.main
+        let voipRegistry: PKPushRegistry = PKPushRegistry(queue: mainQueue)
+        voipRegistry.delegate = self
+        voipRegistry.desiredPushTypes = [PKPushType.voIP]
+        
+        // CRITICAL: WebRTC audio setup for Telnyx (prevents no-audio bug)
+        RTCAudioSession.sharedInstance().useManualAudio = true
+        RTCAudioSession.sharedInstance().isAudioEnabled = false
 
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-    }
-
-    private func configureCallKitProvider() {
-        let configuration = CXProviderConfiguration(localizedName: "Adit Telnyx")
-        configuration.maximumCallGroups = 2
-        configuration.maximumCallsPerCallGroup = 1
-        configuration.supportsVideo = false
-        configuration.supportedHandleTypes = [.phoneNumber, .generic]
-
-        // Use default icon or create a simple colored icon
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 40, weight: .medium)
-        if let icon = UIImage(systemName: "phone.fill", withConfiguration: iconConfig) {
-            configuration.iconTemplateImageData = icon.pngData()
-        }
-
-        provider = CXProvider(configuration: configuration)
-        provider?.setDelegate(self, queue: nil)
     }
 
     // MARK: - PKPushRegistryDelegate
@@ -60,9 +33,11 @@ import AVFoundation
     func pushRegistry(_ registry: PKPushRegistry, didUpdate pushCredentials: PKPushCredentials, for type: PKPushType) {
         let deviceToken = pushCredentials.token.map { String(format: "%02.2hhx", $0) }.joined()
         print("VoIP Device Token: \(deviceToken)")
-
-        // Send this token to your server for VoIP push notifications
-        // You can use Flutter's method channel to send this to Dart side
+        
+        // Register with flutter_callkit_incoming plugin (Telnyx requirement)
+        SwiftFlutterCallkitIncomingPlugin.sharedInstance?.setDevicePushTokenVoIP(deviceToken)
+        
+        // Also send to Flutter for Telnyx SDK registration
         if let flutterViewController = window?.rootViewController as? FlutterViewController {
             let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
             channel.invokeMethod("onVoIPTokenReceived", arguments: deviceToken)
@@ -70,154 +45,81 @@ import AVFoundation
     }
 
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
-        print("Received VoIP push: \(payload.dictionaryPayload)")
-
-        // Handle the incoming VoIP push notification
-        handleIncomingVoIPPush(payload: payload, completion: completion)
-    }
-
-    private func handleIncomingVoIPPush(payload: PKPushPayload, completion: @escaping () -> Void) {
-        print("📱 Handling VoIP push payload: \(payload.dictionaryPayload)")
-
-        // Try different payload structures
-        var callData: [String: Any]?
-
-        // Check for nested call_data structure
-        if let nestedCallData = payload.dictionaryPayload["call_data"] as? [String: Any] {
-            callData = nestedCallData
-        }
-        // Check for direct payload structure
-        else if let directCallData = payload.dictionaryPayload as? [String: Any] {
-            callData = directCallData
-        }
-
-        guard let data = callData,
-              let callerName = data["caller_name"] as? String ?? (payload.dictionaryPayload["caller_name"] as? String),
-              let callerNumber = data["caller_number"] as? String ?? (payload.dictionaryPayload["caller_number"] as? String) else {
-            print("❌ Missing required call data in VoIP payload")
-            print("📱 Available keys: \(payload.dictionaryPayload.keys)")
-            if let callDataKeys = callData?.keys {
-                print("📱 Call data keys: \(Array(callDataKeys))")
+        print("📥 didReceiveIncomingPushWith type=\(type.rawValue) payload=\(payload.dictionaryPayload)")
+        guard type == .voIP else { completion(); return }
+        
+        // Extract Telnyx metadata from payload
+        if let metadata = payload.dictionaryPayload["metadata"] as? [String: Any] {
+            let callID = (metadata["call_id"] as? String) ?? UUID().uuidString
+            let callerName = (metadata["caller_name"] as? String) ?? ""
+            let callerNumber = (metadata["caller_number"] as? String) ?? ""
+            let caller = callerName.isEmpty ? (callerNumber.isEmpty ? "Unknown" : callerNumber) : callerName
+            
+            print("📞 Telnyx VoIP Push - CallID: \(callID), Caller: \(caller)")
+            
+            // Create CallKit data using flutter_callkit_incoming plugin
+            let id = UUID(uuidString: callID) ?? UUID()
+            let data = flutter_callkit_incoming.Data(id: id.uuidString, nameCaller: caller, handle: callerNumber, type: 0)
+            data.extra = payload.dictionaryPayload as NSDictionary
+            data.normalHandle = 1
+            data.uuid = id.uuidString
+            data.nameCaller = caller
+            
+            // Show CallKit incoming screen using plugin (CRITICAL for killed-state wakeup)
+            SwiftFlutterCallkitIncomingPlugin.sharedInstance?.showCallkitIncoming(data, fromPushKit: true)
+            
+            // CRITICAL: Call completion handler after showing CallKit
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                completion()
             }
+        } else {
+            print("❌ No metadata found in VoIP payload")
             completion()
-            return
         }
-        // Determine call ID
-        var callID = (data["call_id"] as? String) ?? (payload.dictionaryPayload["call_id"] as? String) ?? UUID().uuidString
-        if callID.isEmpty { callID = UUID().uuidString }
-
-        // Prefer caller name, fall back to number
-        let displayName = callerName.isEmpty ? (callerNumber.isEmpty ? "Unknown" : callerNumber) : callerName
-
-        // Show incoming using native CallKit
-        let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: displayName)
-        update.localizedCallerName = displayName
-        update.hasVideo = false
-        provider?.reportNewIncomingCall(with: UUID(uuidString: callID) ?? UUID(), update: update, completion: { error in
-            if let error = error {
-                print("Error reporting incoming call (fallback): \(error.localizedDescription)")
-            } else {
-                print("Successfully reported incoming call to CallKit (fallback)")
-            }
-        })
-
-        // Also notify Flutter via method channel if needed
-        if let flutterViewController = self.window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
-            channel.invokeMethod("onIncomingCall", arguments: data)
-        }
-
-        completion()
     }
 
-    // Invalidate VoIP token - clear on iOS when APNs invalidates it
     func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
         print("🔄 VoIP token invalidated by APNs")
-        if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
-            channel.invokeMethod("onVoIPTokenReceived", arguments: "")
-        }
+        SwiftFlutterCallkitIncomingPlugin.sharedInstance?.setDevicePushTokenVoIP("")
     }
-
-    // Foreground restoration handler to ensure CallKit registration works when waking app
+    
+    // Foreground call restoration (Telnyx requirement)
     override func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        print("➡️ application:continueUserActivity called")
-        // No-op for plugin; native CallKit will be triggered by incoming push
-        return true
+        print("➡️ application:continueUserActivity for foreground calls")
+        return super.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
-    // MARK: - CXProviderDelegate
-
-    func providerDidReset(_ provider: CXProvider) {
-        print("CallKit provider did reset")
-    }
-
-    func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        print("CallKit perform answer call: \(action.callUUID)")
-
-        // Configure audio session for call
-        configureAudioSessionForCall()
-
-        // Answer the call through the Flutter side
-        if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.adit.callapp/callkit", binaryMessenger: flutterViewController.binaryMessenger)
-            channel.invokeMethod("answerCall", arguments: action.callUUID.uuidString)
-        }
-
+    // MARK: - CallkitIncomingAppDelegate (Telnyx requirement)
+    
+    func onAccept(_ call: flutter_callkit_incoming.Call, _ action: CXAnswerCallAction) {
+        print("📞 CallKit Accept")
         action.fulfill()
     }
-
-    func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        print("CallKit perform end call: \(action.callUUID)")
-
-        // End the call through the Flutter side
-        if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.adit.callapp/callkit", binaryMessenger: flutterViewController.binaryMessenger)
-            channel.invokeMethod("endCall", arguments: action.callUUID.uuidString)
-        }
-
+    
+    func onDecline(_ call: flutter_callkit_incoming.Call, _ action: CXEndCallAction) {
+        print("📞 CallKit Decline")
         action.fulfill()
     }
-
-    func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        print("CallKit perform start call: \(action.callUUID)")
+    
+    func onEnd(_ call: flutter_callkit_incoming.Call, _ action: CXEndCallAction) {
+        print("📞 CallKit End")
         action.fulfill()
     }
-
-    func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        print("CallKit audio session activated")
-        configureAudioSessionForCall()
+    
+    func onTimeOut(_ call: flutter_callkit_incoming.Call) {
+        print("⏱️ CallKit Timeout")
     }
-
-    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        print("CallKit audio session deactivated")
+    
+    // CRITICAL: WebRTC audio session handling for Telnyx (prevents no-audio bug)
+    func didActivateAudioSession(_ audioSession: AVAudioSession) {
+        print("🔊 Activate Audio Session (WebRTC)")
+        RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
+        RTCAudioSession.sharedInstance().isAudioEnabled = true
     }
-
-    private func configureAudioSessionForCall() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(
-                .playAndRecord,
-                mode: .voiceChat,
-                options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker, .mixWithOthers]
-            )
-            try audioSession.overrideOutputAudioPort(.speaker)
-            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-            print("Audio session configured for call")
-        } catch {
-            print("Error configuring audio session: \(error.localizedDescription)")
-        }
-    }
-
-    // Handle when app becomes active
-    override func applicationDidBecomeActive(_ application: UIApplication) {
-        super.applicationDidBecomeActive(application)
-
-        // Check for any missed calls or pending call state
-        if let flutterViewController = window?.rootViewController as? FlutterViewController {
-            let channel = FlutterMethodChannel(name: "com.adit.callapp/callkit", binaryMessenger: flutterViewController.binaryMessenger)
-            channel.invokeMethod("appDidBecomeActive", arguments: nil)
-        }
+    
+    func didDeactivateAudioSession(_ audioSession: AVAudioSession) {
+        print("🔇 DeActivate Audio Session (WebRTC)")
+        RTCAudioSession.sharedInstance().audioSessionDidDeactivate(audioSession)
+        RTCAudioSession.sharedInstance().isAudioEnabled = false
     }
 }

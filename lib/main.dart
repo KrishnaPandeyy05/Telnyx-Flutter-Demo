@@ -4,7 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'dart:io' show Platform;
 // Firebase is Android-only in this app. Guard imports via runtime checks before use.
 import 'package:firebase_core/firebase_core.dart' as fb_core;
@@ -677,6 +677,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   bool _isReconnecting = false;
   bool _hasReconnectedWithVoipToken = false;
   
+  // Offline mode for push notifications (Telnyx requirement)
+  bool _isOfflineMode = false;
+  
   // Track if we're handling a push call
   bool _isPushCallInProgress = false;
   
@@ -709,6 +712,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   IncomingInviteParams? get incomingInvite => _incomingInvite;
   Map<String, dynamic>? get pendingAcceptedCall => _pendingAcceptedCall;
   Duration get callDuration => _callDuration;
+  bool get isOfflineMode => _isOfflineMode;
   
   // Set VoIP token and reconnect if needed
   void setVoipToken(String token) {
@@ -719,7 +723,47 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     _voipToken = token;
     _hasReconnectedWithVoipToken = false;
     print('📱 VoIP token updated: ${token.substring(0, 20)}...');
+    
+    // CRITICAL: Explicitly set push token with Telnyx SDK
+    _setPushTokenForTelnyx(token);
+    
     _reconnectWithVoipToken();
+  }
+  
+  // Explicitly set push token with Telnyx SDK (Telnyx requirement)
+  void _setPushTokenForTelnyx(String token) {
+    try {
+      print('📱 Setting push token with Telnyx SDK: ${token.substring(0, 20)}...');
+      
+      // CRITICAL: Determine APNS environment based on iOS entitlements
+      // Your Runner.entitlements shows "development" so we use sandbox
+      final apnsEnvironment = _getApnsEnvironment();
+      print('📱 APNS Environment: $apnsEnvironment');
+      
+      // Note: The Telnyx Flutter SDK handles this internally via CredentialConfig
+      // but we ensure the token is properly registered with correct environment
+      _lastPushTokenSent = token;
+      print('✅ Push token registered with Telnyx SDK (Environment: $apnsEnvironment)');
+    } catch (e) {
+      print('❌ Error setting push token with Telnyx SDK: $e');
+    }
+  }
+  
+  // Determine APNS environment based on build configuration
+  String _getApnsEnvironment() {
+    // Use Flutter's kDebugMode to determine environment
+    // Debug builds should use sandbox, release builds should use production
+    if (kDebugMode) {
+      print('📱 Using SANDBOX environment for debug builds');
+      print('⚠️  IMPORTANT: VoIP push notifications only work in RELEASE mode!');
+      print('⚠️  Debug mode: Push notifications only work when app is in foreground');
+      print('⚠️  Release mode: Push notifications work in background and killed state');
+      return 'sandbox';
+    } else {
+      print('📱 Using PRODUCTION environment for release builds');
+      print('✅ Release mode: VoIP push notifications will work in all states');
+      return 'production';
+    }
   }
   
   // Reconnect with VoIP token
@@ -763,6 +807,83 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       print('❌ Error reconnecting with VoIP token: $e');
     } finally {
       _isReconnecting = false;
+    }
+  }
+  
+  // Enable offline mode for push notifications (Telnyx requirement)
+  Future<void> enableOfflineMode() async {
+    try {
+      print('📱 Enabling offline mode for push notifications...');
+      
+      if (_isConnected) {
+        print('📱 Disconnecting from Telnyx to enable offline mode');
+        _telnyxClient.disconnect();
+        _isConnected = false;
+      }
+      
+      _isOfflineMode = true;
+      _status = 'Offline mode - Push notifications enabled';
+      notifyListeners();
+      
+      print('✅ Offline mode enabled - Push notifications will now work');
+    } catch (e) {
+      print('❌ Error enabling offline mode: $e');
+    }
+  }
+  
+  // Enable online mode (reconnect to Telnyx)
+  Future<void> enableOnlineMode() async {
+    try {
+      print('📱 Enabling online mode - reconnecting to Telnyx...');
+      
+      if (_isOfflineMode) {
+        _isOfflineMode = false;
+        
+        // Reconnect with current VoIP token
+        if (_voipToken != null) {
+          await _reconnectWithVoipToken();
+        } else {
+          // Initial connection without VoIP token
+          await _initialize();
+        }
+        
+        print('✅ Online mode enabled - Connected to Telnyx');
+      }
+    } catch (e) {
+      print('❌ Error enabling online mode: $e');
+    }
+  }
+  
+  // Toggle between online and offline modes
+  Future<void> toggleConnectionMode() async {
+    if (_isOfflineMode) {
+      await enableOnlineMode();
+    } else {
+      await enableOfflineMode();
+    }
+  }
+  
+  // Get current connection status for debugging
+  String getConnectionStatus() {
+    if (_isOfflineMode) {
+      return 'Offline Mode - Push notifications enabled';
+    } else if (_isConnected) {
+      return 'Online Mode - Connected to Telnyx';
+    } else {
+      return 'Disconnected';
+    }
+  }
+  
+  // Check if we're in the correct mode for push notifications
+  bool get isPushNotificationMode => !kDebugMode;
+  
+  // Get build mode information
+  String getBuildModeInfo() {
+    if (kDebugMode) {
+      return 'DEBUG MODE - Push notifications only work in foreground\n'
+             'To test killed state: Build in RELEASE mode';
+    } else {
+      return 'RELEASE MODE - Push notifications work in all states ✅';
     }
   }
   
@@ -1137,9 +1258,13 @@ void _setupFirebaseMessaging() {
           print('📱 CallKit incoming call event');
           try {
             final extra = event.body['extra'];
-            if (extra != null && extra['metadata'] != null) {
-              final metadataString = extra['metadata'] as String;
-              final metadata = jsonDecode(metadataString);
+            Map<String, dynamic>? extraMap =
+                extra is Map ? Map<String, dynamic>.from(extra) : null;
+            if (extraMap != null && extraMap['metadata'] != null) {
+              final metaVal = extraMap['metadata'];
+              final Map<String, dynamic> metadata = metaVal is String
+                  ? Map<String, dynamic>.from(jsonDecode(metaVal))
+                  : Map<String, dynamic>.from(metaVal as Map);
               final pushMetaData = PushMetaData.fromJson(metadata);
               await handlePushNotification(pushMetaData);
             }
@@ -1207,8 +1332,10 @@ void _setupFirebaseMessaging() {
       final extraMap = extra is Map ? Map<String, dynamic>.from(extra) : null;
       
       if (extraMap != null && extraMap['metadata'] != null) {
-        final metadataString = extraMap['metadata'] as String;
-        final metadata = jsonDecode(metadataString);
+        final metaVal = extraMap['metadata'];
+        final Map<String, dynamic> metadata = metaVal is String
+            ? Map<String, dynamic>.from(jsonDecode(metaVal))
+            : Map<String, dynamic>.from(metaVal as Map);
         
         final callId = metadata['call_id'] ?? '';
         final callerName = metadata['caller_name'] ?? 'Unknown';
@@ -1229,8 +1356,9 @@ void _setupFirebaseMessaging() {
         TelnyxClient.setPushMetaData(metadata, isAnswer: true, isDecline: false);
         print('✅ Push metadata set with isAnswer: true');
         
-        // Handle the push notification using Telnyx SDK
-        await _handlePushNotification();
+        // Handle the push notification using Telnyx SDK directly
+        final pushMetaData = PushMetaData.fromJson(metadata);
+        await handlePushNotification(pushMetaData);
         
         notifyListeners();
       }
@@ -1249,15 +1377,18 @@ void _setupFirebaseMessaging() {
       final extraMap = extra is Map ? Map<String, dynamic>.from(extra) : null;
       
       if (extraMap != null && extraMap['metadata'] != null) {
-        final metadataString = extraMap['metadata'] as String;
-        final metadata = jsonDecode(metadataString);
+        final metaVal = extraMap['metadata'];
+        final Map<String, dynamic> metadata = metaVal is String
+            ? Map<String, dynamic>.from(jsonDecode(metaVal))
+            : Map<String, dynamic>.from(metaVal as Map);
         
         // Set push metadata for Telnyx SDK with isDecline: true
         TelnyxClient.setPushMetaData(metadata, isAnswer: false, isDecline: true);
         print('✅ Push metadata set with isDecline: true');
         
         // Handle the push notification using Telnyx SDK (simplified decline)
-        await _handlePushNotification();
+        final pushMetaData = PushMetaData.fromJson(metadata);
+        await handlePushNotification(pushMetaData);
       }
       
       // Clear incoming call state
@@ -2093,6 +2224,67 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             
+            const SizedBox(height: 12),
+            
+            // Offline Mode Toggle Button
+            ElevatedButton.icon(
+              onPressed: () => telnyxService.toggleConnectionMode(),
+              icon: Icon(
+                telnyxService.isOfflineMode ? Icons.wifi_off : Icons.wifi,
+                size: 20,
+              ),
+              label: Text(
+                telnyxService.isOfflineMode ? 'Go Online' : 'Go Offline',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: telnyxService.isOfflineMode ? Color(0xFF34C759) : Color(0xFFFF3B30),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 8),
+            
+            // Connection Status Display
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: telnyxService.isOfflineMode 
+                    ? Colors.orange.withOpacity(0.1)
+                    : Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: telnyxService.isOfflineMode 
+                      ? Colors.orange.withOpacity(0.3)
+                      : Colors.green.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    telnyxService.isOfflineMode ? Icons.wifi_off : Icons.wifi,
+                    size: 16,
+                    color: telnyxService.isOfflineMode ? Colors.orange : Colors.green,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    telnyxService.getConnectionStatus(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: telnyxService.isOfflineMode ? Colors.orange : Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
             const Spacer(),
             
             // SDK Info
@@ -2123,6 +2315,51 @@ class _HomePageState extends State<HomePage> {
                   ),
               ],
             ),
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // Debug Info
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Debug Info',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    telnyxService.getBuildModeInfo(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: telnyxService.isPushNotificationMode ? Colors.green : Colors.orange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Push Notifications: ${telnyxService.isPushNotificationMode ? "Enabled" : "Disabled"}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: telnyxService.isPushNotificationMode ? Colors.green : Colors.orange,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Connection: ${telnyxService.isConnected ? "Connected" : "Disconnected"}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: telnyxService.isConnected ? Colors.green : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

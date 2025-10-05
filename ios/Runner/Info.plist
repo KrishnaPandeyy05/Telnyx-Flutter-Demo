@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access to make and receive phone calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access for video calls and call features.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
@@ -48,6 +50,10 @@
 		<string>processing</string>
 		<string>voip</string>
 		<string>remote-notification</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.adit.callapp.voip.background</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

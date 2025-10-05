@@ -36,5 +36,65 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    
+    # Fix WebRTC framework dSYM issue
+    if target.name == 'WebRTC-SDK'
+      target.build_configurations.each do |config|
+        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+        config.build_settings['ONLY_ACTIVE_ARCH'] = 'NO'
+        config.build_settings['ENABLE_BITCODE'] = 'NO'
+        config.build_settings['VALIDATE_PRODUCT'] = 'NO'
+        config.build_settings['GCC_GENERATE_DEBUGGING_SYMBOLS'] = 'YES'
+      end
+    end
+  end
+  
+  # Add build script to handle WebRTC dSYM issue
+  installer.aggregate_targets.each do |aggregate_target|
+    aggregate_target.user_project.targets.each do |target|
+      if target.name == 'Runner'
+        # Create a new build phase for WebRTC dSYM fix
+        phase = target.new_shell_script_build_phase('Generate WebRTC dSYM')
+        phase.shell_script = <<~SCRIPT
+          # Generate WebRTC dSYM using dsymutil
+          echo "🛠 Generating dSYM for WebRTC..."
+          
+          # Try multiple possible paths for WebRTC framework
+          WEBRTC_PATHS=(
+            "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC"
+            "${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC"
+            "${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC"
+          )
+          
+          # Where Xcode expects the dSYM for this build configuration
+          WEBRTC_DSYM="${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM"
+          
+          # Find the WebRTC binary
+          WEBRTC_BIN=""
+          for path in "${WEBRTC_PATHS[@]}"; do
+            if [ -e "$path" ]; then
+              WEBRTC_BIN="$path"
+              echo "Found WebRTC binary at: $path"
+              break
+            fi
+          done
+          
+          # Generate dSYM if binary found and dSYM doesn't exist
+          if [ -n "$WEBRTC_BIN" ] && [ ! -e "$WEBRTC_DSYM" ]; then
+            echo "🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN"
+            /usr/bin/dsymutil "$WEBRTC_BIN" -o "$WEBRTC_DSYM"
+            echo "✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM"
+          elif [ -e "$WEBRTC_DSYM" ]; then
+            echo "ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM"
+          else
+            echo "❌ WebRTC binary not found in any expected location"
+            echo "Searched paths:"
+            for path in "${WEBRTC_PATHS[@]}"; do
+              echo "  - $path"
+            done
+          fi
+        SCRIPT
+      end
+    end
   end
 end
