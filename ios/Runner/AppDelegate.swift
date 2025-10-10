@@ -24,8 +24,61 @@ import WebRTC
         // CRITICAL: WebRTC audio setup for Telnyx (prevents no-audio bug)
         RTCAudioSession.sharedInstance().useManualAudio = true
         RTCAudioSession.sharedInstance().isAudioEnabled = false
+        
+        // Setup audio activation method channel
+        if let flutterViewController = window?.rootViewController as? FlutterViewController {
+            let audioChannel = FlutterMethodChannel(name: "com.adit.callapp/audio", binaryMessenger: flutterViewController.binaryMessenger)
+            audioChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+                if call.method == "activateAudio" {
+                    print("🔊 Flutter requested audio activation")
+                    self?.activateAudioSession()
+                    result(true)
+                } else if call.method == "deactivateAudio" {
+                    print("🔇 Flutter requested audio deactivation")
+                    self?.deactivateAudioSession()
+                    result(true)
+                } else {
+                    result(FlutterMethodNotImplemented)
+                }
+            }
+        }
 
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+    
+    // Activate WebRTC audio session
+    private func activateAudioSession() {
+        print("🔊 Activating WebRTC audio session...")
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            // Configure for voice with earpiece as default route
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .allowBluetooth])
+            // Prefer the built-in receiver (earpiece) initially
+            try audioSession.overrideOutputAudioPort(.none)
+            try audioSession.setActive(true)
+            
+            RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
+            RTCAudioSession.sharedInstance().isAudioEnabled = true
+            
+            print("✅ WebRTC audio session activated")
+        } catch {
+            print("❌ Failed to activate audio session: \(error)")
+        }
+    }
+    
+    // Deactivate WebRTC audio session
+    private func deactivateAudioSession() {
+        print("🔇 Deactivating WebRTC audio session...")
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            RTCAudioSession.sharedInstance().audioSessionDidDeactivate(audioSession)
+            RTCAudioSession.sharedInstance().isAudioEnabled = false
+            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            
+            print("✅ WebRTC audio session deactivated")
+        } catch {
+            print("❌ Failed to deactivate audio session: \(error)")
+        }
     }
 
     // MARK: - PKPushRegistryDelegate
@@ -53,11 +106,12 @@ import WebRTC
             let callID = (metadata["call_id"] as? String) ?? UUID().uuidString
             let callerName = (metadata["caller_name"] as? String) ?? ""
             let callerNumber = (metadata["caller_number"] as? String) ?? ""
+            let voiceSdkId = (metadata["voice_sdk_id"] as? String) ?? ""
             let caller = callerName.isEmpty ? (callerNumber.isEmpty ? "Unknown" : callerNumber) : callerName
             
-            print("📞 Telnyx VoIP Push - CallID: \(callID), Caller: \(caller)")
+            print("📞 Telnyx VoIP Push - CallID: \(callID), Caller: \(caller), VoiceSDK: \(voiceSdkId)")
             
-            // Create CallKit data using flutter_callkit_incoming plugin
+            // Create CallKit data using flutter_callkit_incoming plugin (report immediately)
             let id = UUID(uuidString: callID) ?? UUID()
             let data = flutter_callkit_incoming.Data(id: id.uuidString, nameCaller: caller, handle: callerNumber, type: 0)
             data.extra = payload.dictionaryPayload as NSDictionary
@@ -68,9 +122,17 @@ import WebRTC
             // Show CallKit incoming screen using plugin (CRITICAL for killed-state wakeup)
             SwiftFlutterCallkitIncomingPlugin.sharedInstance?.showCallkitIncoming(data, fromPushKit: true)
             
-            // CRITICAL: Call completion handler after showing CallKit
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                completion()
+            // Immediately call completion to satisfy PushKit timing
+            completion()
+
+            // Trigger Flutter handling asynchronously after reporting to CallKit
+            if let flutterViewController = window?.rootViewController as? FlutterViewController {
+                let channel = FlutterMethodChannel(name: "com.adit.callapp/voip", binaryMessenger: flutterViewController.binaryMessenger)
+                print("🔌 Notifying Flutter to reconnect WebSocket for incoming call with voice_sdk_id: \(voiceSdkId)")
+                print("📦 Passing full metadata to Flutter: \(metadata)")
+                DispatchQueue.main.async { [metadata] in
+                    channel.invokeMethod("reconnectForIncomingCall", arguments: metadata)
+                }
             }
         } else {
             print("❌ No metadata found in VoIP payload")
@@ -115,6 +177,12 @@ import WebRTC
         print("🔊 Activate Audio Session (WebRTC)")
         RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
         RTCAudioSession.sharedInstance().isAudioEnabled = true
+        // Ensure initial route stays on receiver unless user toggles speaker
+        do {
+            try audioSession.overrideOutputAudioPort(.none)
+        } catch {
+            print("⚠️ Failed to enforce receiver route: \(error)")
+        }
     }
     
     func didDeactivateAudioSession(_ audioSession: AVAudioSession) {

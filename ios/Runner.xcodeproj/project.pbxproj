@@ -168,6 +168,33 @@
 				FA65FBB5FA44D925C914DB91 /* [CP] Embed Pods Frameworks */,
 				AFB5C73622B3D21650D21A97 /* [CP] Copy Pods Resources */,
 				CB51EF2633E314E8F808DDEA /* Generate WebRTC dSYM */,
+				46EAFA396A886476E5F16D56 /* Generate WebRTC dSYM */,
+				89D5998F400C1D09524426FB /* Generate WebRTC dSYM */,
+				3B1F940702A7E2FE8928699A /* Generate WebRTC dSYM */,
+				5AC5D9AF5D8B1CD00103BF02 /* Generate WebRTC dSYM */,
+				DC514EDD304785F11AD4488B /* Generate WebRTC dSYM */,
+				CA91C2B3FFEAB5F5AAB84876 /* Generate WebRTC dSYM */,
+				F1B55FBF90BC035B8BB8D18A /* Generate WebRTC dSYM */,
+				4695D26B7EB884133E0B9BFC /* Generate WebRTC dSYM */,
+				9D47E0596324943B50FC8538 /* Generate WebRTC dSYM */,
+				BA3CF8877761FD55C7CD1B79 /* Generate WebRTC dSYM */,
+				A6CBE649FBDEAC354DBCE2FE /* Generate WebRTC dSYM */,
+				3F457C921BB726AE60DAE20F /* Generate WebRTC dSYM */,
+				8A6830DBBD0734DAF9FDBFCB /* Generate WebRTC dSYM */,
+				DC1C1665EAB78BF664F06DBC /* Generate WebRTC dSYM */,
+				9441A27134127D9A53C6D324 /* Generate WebRTC dSYM */,
+				A6EC2D5DFCE3D4EF17A84C99 /* Generate WebRTC dSYM */,
+				40C1D03113AC03813A3DC3DC /* Generate WebRTC dSYM */,
+				137ADE9C6E11787D7B833372 /* Generate WebRTC dSYM */,
+				87F9740C53BB4B8D1BDA4536 /* Generate WebRTC dSYM */,
+				28EBAE9CB0580C5653E54D1B /* Generate WebRTC dSYM */,
+				5F6E4045057590E5CA1A3634 /* Generate WebRTC dSYM */,
+				4869B19336BE7FB0554C80E6 /* Generate WebRTC dSYM */,
+				4C6083BDC2F41965667525DC /* Generate WebRTC dSYM */,
+				015A197244A8BFC8AC44EAE4 /* Generate WebRTC dSYM */,
+				7B335EC97C21F436EE5F0AE9 /* Generate WebRTC dSYM */,
+				9F56477D13976D812F477243 /* Generate WebRTC dSYM */,
+				21FA965C13B5EF8D2E82BAC4 /* Generate WebRTC dSYM */,
 			);
 			buildRules = (
 			);
@@ -228,6 +255,78 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		015A197244A8BFC8AC44EAE4 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		137ADE9C6E11787D7B833372 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		21FA965C13B5EF8D2E82BAC4 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		28EBAE9CB0580C5653E54D1B /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -244,6 +343,258 @@
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
 		};
+		3B1F940702A7E2FE8928699A /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		3F457C921BB726AE60DAE20F /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		40C1D03113AC03813A3DC3DC /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		4695D26B7EB884133E0B9BFC /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		46EAFA396A886476E5F16D56 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		4869B19336BE7FB0554C80E6 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		4C6083BDC2F41965667525DC /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		5AC5D9AF5D8B1CD00103BF02 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		5F6E4045057590E5CA1A3634 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		7B335EC97C21F436EE5F0AE9 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		87F9740C53BB4B8D1BDA4536 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		89D5998F400C1D09524426FB /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		8A6830DBBD0734DAF9FDBFCB /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		9441A27134127D9A53C6D324 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
 		9740EEB61CF901F6004384FC /* Run Script */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -258,6 +609,42 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+		};
+		9D47E0596324943B50FC8538 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		9F56477D13976D812F477243 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
 		};
 		A4D91E9FB76078CE60287839 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -281,6 +668,42 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		A6CBE649FBDEAC354DBCE2FE /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		A6EC2D5DFCE3D4EF17A84C99 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
 		AFB5C73622B3D21650D21A97 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -289,20 +712,106 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		BA3CF8877761FD55C7CD1B79 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		CA91C2B3FFEAB5F5AAB84876 /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
 		CB51EF2633E314E8F808DDEA /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		DC1C1665EAB78BF664F06DBC /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		DC514EDD304785F11AD4488B /* Generate WebRTC dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate WebRTC dSYM";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Generate WebRTC dSYM using dsymutil\necho \"🛠 Generating dSYM for WebRTC...\"\n\n# Try multiple possible paths for WebRTC framework\nWEBRTC_PATHS=(\n  \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework/WebRTC\"\n  \"${BUILT_PRODUCTS_DIR}/WebRTC.framework/WebRTC\"\n  \"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework/ios-arm64/WebRTC.framework/WebRTC\"\n)\n\n# Where Xcode expects the dSYM for this build configuration\nWEBRTC_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/WebRTC.framework.dSYM\"\n\n# Find the WebRTC binary\nWEBRTC_BIN=\"\"\nfor path in \"${WEBRTC_PATHS[@]}\"; do\n  if [ -e \"$path\" ]; then\n    WEBRTC_BIN=\"$path\"\n    echo \"Found WebRTC binary at: $path\"\n    break\n  fi\ndone\n\n# Generate dSYM if binary found and dSYM doesn't exist\nif [ -n \"$WEBRTC_BIN\" ] && [ ! -e \"$WEBRTC_DSYM\" ]; then\n  echo \"🛠 Generating dSYM for WebRTC from: $WEBRTC_BIN\"\n  /usr/bin/dsymutil \"$WEBRTC_BIN\" -o \"$WEBRTC_DSYM\"\n  echo \"✅ WebRTC dSYM generated successfully at: $WEBRTC_DSYM\"\nelif [ -e \"$WEBRTC_DSYM\" ]; then\n  echo \"ℹ️ WebRTC dSYM already exists at: $WEBRTC_DSYM\"\nelse\n  echo \"❌ WebRTC binary not found in any expected location\"\n  echo \"Searched paths:\"\n  for path in \"${WEBRTC_PATHS[@]}\"; do\n    echo \"  - $path\"\n  done\nfi\n";
+		};
+		F1B55FBF90BC035B8BB8D18A /* Generate WebRTC dSYM */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -328,13 +837,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -434,16 +939,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = "Runner/Runner-Debug.entitlements";
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = EZC26TE6SD;
 				ENABLE_BITCODE = NO;
+				FLUTTER_BUILD_NAME = 1.0.5;
 				INFOPLIST_FILE = Runner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adit.callapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -570,16 +1076,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = "Runner/Runner-Debug.entitlements";
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = EZC26TE6SD;
 				ENABLE_BITCODE = NO;
+				FLUTTER_BUILD_NAME = 1.0.5;
 				INFOPLIST_FILE = Runner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adit.callapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -596,16 +1103,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = "Runner/Runner-Release.entitlements";
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = EZC26TE6SD;
 				ENABLE_BITCODE = NO;
+				FLUTTER_BUILD_NAME = 1.0.5;
 				INFOPLIST_FILE = Runner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adit.callapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";

@@ -17,9 +17,11 @@ import 'package:flutter_callkit_incoming/entities/android_params.dart';
 import 'package:flutter_callkit_incoming/entities/ios_params.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Enhanced UI imports
 import 'ui/theme/app_theme.dart';
+import 'ui/screens/simple_home_screen.dart';
 
 import 'package:telnyx_webrtc/telnyx_client.dart';
 import 'package:telnyx_webrtc/config/telnyx_config.dart';
@@ -51,12 +53,49 @@ Map<String, dynamic>? globalCallKitCallInfo;
 // Global variable to store VoIP token
 String? globalVoipToken;
 
+// Global TelnyxService instance for killed-state access
+TelnyxService? _globalTelnyxService;
+
 // Custom Logger Implementation
 class MyCustomLogger extends CustomLogger {
   @override
   log(LogLevel level, String message) {
     print('[$level] $message');
   }
+}
+
+// Centralized safe abbreviation for logging tokens/IDs
+String abbreviate(String? value, {int max = 20}) {
+  if (value == null) return 'null';
+  if (max <= 0) return '';
+  return value.length > max ? value.substring(0, max) : value;
+}
+
+// Returns a usable VoIP token, or null if not yet available/placeholder
+String? getValidVoipToken() {
+  final token = globalVoipToken;
+  if (token == null) return null;
+  if (token == 'RECONNECT_NEEDED') return null;
+  return token;
+}
+
+// Persist/retrieve VoIP token for killed/background launches
+Future<void> _saveVoipToken(String token) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('voip_token', token);
+  } catch (_) {}
+}
+
+Future<void> _loadSavedVoipToken() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('voip_token');
+    if (saved != null && saved.isNotEmpty) {
+      globalVoipToken = saved;
+      // Also update in-memory token store if service not yet ready
+    }
+  } catch (_) {}
 }
 
 // Background message handler for Firebase
@@ -98,26 +137,7 @@ Future<void> _firebaseMessagingBackgroundHandler(fb_msg.RemoteMessage message) a
     print('📱 Triggering CallKit for callId=$callId');
     await _showCallKitIncoming(data);
     
-    // Listen to action from FlutterCallkitIncoming
-    FlutterCallkitIncoming.onEvent.listen((CallEvent? event) async {
-      if (event == null) return;
-      
-      switch (event.event) {
-        case Event.actionCallAccept:
-          // Set the telnyx metadata for access when the app comes to foreground
-          TelnyxClient.setPushMetaData(data, isAnswer: true, isDecline: false);
-          print('✅ Push metadata set with isAnswer: true');
-          break;
-        case Event.actionCallDecline:
-          // When the user declines the call from the push notification, the SDK now handles this automatically.
-          // Simply set the decline flag and the SDK will handle the rest using the new push_decline method.
-          TelnyxClient.setPushMetaData(data, isAnswer: false, isDecline: true);
-          print('✅ Push metadata set with isDecline: true');
-          break;
-        default:
-          break;
-      }
-    });
+    // CallKit event handling is now centralized in _setupCallKitListeners()
   } else {
     print('❌ Missing call_id or voice_sdk_id - not showing CallKit');
     print('❌ Available data keys: ${data.keys.toList()}');
@@ -248,6 +268,9 @@ const MethodChannel _methodChannel = MethodChannel('com.adit.callapp/callkit');
 // Method channel to receive VoIP tokens from native
 const MethodChannel _voipMethodChannel = MethodChannel('com.adit.callapp/voip');
 
+// Method channel to control audio session on iOS
+const MethodChannel _audioMethodChannel = MethodChannel('com.adit.callapp/audio');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Initialize Firebase only on Android
@@ -255,6 +278,8 @@ Future<void> main() async {
     await fb_core.Firebase.initializeApp();
     fb_msg.FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   }
+  // Load any previously saved VoIP token early (used for killed/background connects)
+  await _loadSavedVoipToken();
   
   await _requestPermissions();
   
@@ -267,9 +292,12 @@ Future<void> main() async {
   // Check if app was launched from CallKit accept BEFORE building app
   await _detectCallKitLaunchState();
   
+  // Create global TelnyxService instance for killed-state access
+  _globalTelnyxService = TelnyxService();
+  
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => TelnyxService(),
+    ChangeNotifierProvider.value(
+      value: _globalTelnyxService!,
       child: const TelnyxApp(),
     ),
   );
@@ -430,21 +458,104 @@ Future<void> _handleNativeMethodCall(MethodCall call) async {
 Future<void> _handleVoIPMethodCall(MethodCall call) async {
   print('📱 VoIP method call: ${call.method}');
 
-  if (call.method == 'onVoIPTokenReceived') {
+  if (call.method == 'reconnectForIncomingCall') {
+    // CRITICAL: Use handlePushNotification to connect with CORRECT voice_sdk_id from push
+    // This eliminates the 26-second INVITE delay
+    final metadata = call.arguments as Map<dynamic, dynamic>?;
+    print('🔌 VoIP push received with metadata: $metadata');
+    
+    if (metadata == null) {
+      print('❌ No metadata received from VoIP push');
+      return;
+    }
+    
+    try {
+      // Convert metadata to proper format for PushMetaData
+      final metadataMap = metadata.map((key, value) => MapEntry(key.toString(), value));
+      final voiceSdkId = metadataMap['voice_sdk_id'] as String?;
+      print('📦 Creating PushMetaData from VoIP push with voice_sdk_id: $voiceSdkId');
+      
+      // Create PushMetaData from the metadata
+      final pushMetaData = PushMetaData.fromJson(metadataMap);
+      print('✅ PushMetaData created from VoIP push');
+      
+      // Try to get service from context first
+      TelnyxService? telnyxService;
+      
+      if (navigatorKey.currentContext != null) {
+        telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
+      } else if (_globalTelnyxService != null) {
+        // Use global instance if context not available (killed state)
+        print('🔧 Using global TelnyxService instance (killed state)');
+        telnyxService = _globalTelnyxService;
+      }
+      
+      if (telnyxService != null) {
+        // Flag push-call in progress so first INVITE is auto-accepted and
+        // Flutter won't try to show a duplicate CallKit notification.
+        try {
+          telnyxService._isPushCallInProgress = true;
+          print('📌 Marked push call in progress on VoIP push');
+        } catch (_) {}
+        // Provide push metadata to SDK first (tie correct voice_sdk_id)
+        try {
+          final metadataForSdk = metadataMap.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+          TelnyxClient.setPushMetaData(
+            metadataForSdk,
+            isAnswer: false,
+            isDecline: false,
+          );
+          print('✅ setPushMetaData (isAnswer=false) set for incoming VoIP push');
+        } catch (e) {
+          print('⚠️ setPushMetaData failed on push: $e');
+        }
+        // Get the config using global constants
+        final config = CredentialConfig(
+          sipUser: _sipUser,
+          sipPassword: _sipPassword,
+          sipCallerIDName: _callerIdName,
+          sipCallerIDNumber: _callerIdNumber,
+          notificationToken: getValidVoipToken(),
+          debug: true,
+          logLevel: LogLevel.all,
+          customLogger: MyCustomLogger(),
+        );
+        
+        // CRITICAL: Use handlePushNotification instead of manual reconnect
+        // This connects with the SAME voice_sdk_id from the push metadata
+        print('🚀 Calling handlePushNotification with correct voice_sdk_id from push');
+        telnyxService._telnyxClient.handlePushNotification(pushMetaData, config, null);
+        print('✅ handlePushNotification called - WebSocket will connect with correct voice_sdk_id');
+        
+        // CRITICAL FIX: Track the voice_sdk_id immediately so _handleCallKitAccept 
+        // knows we're already connected and won't create a duplicate connection
+        telnyxService._voiceSdkId = voiceSdkId ?? 'unknown';
+        print('📌 Tracked voice_sdk_id: ${telnyxService._voiceSdkId}');
+      } else {
+        print('⚠️ No TelnyxService available yet - storing metadata for later');
+        // Do not overwrite stored token; just note pending reconnect
+      }
+    } catch (e) {
+      print('❌ Error handling VoIP push notification: $e');
+      print('❌ Stack trace: ${StackTrace.current}');
+    }
+  } else if (call.method == 'onVoIPTokenReceived') {
     final token = call.arguments as String?;
     if (token != null) {
-      print('📱 Received VoIP token: ${token.substring(0, 20)}...');
+      print('📱 Received VoIP token: ${abbreviate(token)}...');
       // Store the VoIP token in TelnyxService for use in push notifications
       try {
         if (navigatorKey.currentContext != null) {
           final telnyxService = Provider.of<TelnyxService>(navigatorKey.currentContext!, listen: false);
           telnyxService.setVoipToken(token);
-          print('📱 VoIP token stored in TelnyxService: ${token.substring(0, 20)}...');
+          print('📱 VoIP token stored in TelnyxService: ${abbreviate(token)}...');
         } else {
           // Store globally for later use if context is not available
           globalVoipToken = token;
           print('📱 VoIP token stored globally for later use (context not available)');
         }
+        // Persist for killed/background relaunch
+        await _saveVoipToken(token);
       } catch (e) {
         print('❌ Error storing VoIP token: $e');
         // Store globally for later use
@@ -509,7 +620,7 @@ Future<void> _handlePushNotification() async {
       
       // Parse the push metadata
       final pushMetaData = PushMetaData.fromJson(data);
-      if (pushMetaData != null) {
+      {
         print('📱 Push metadata parsed successfully');
         
         // Get the TelnyxService instance
@@ -517,8 +628,6 @@ Future<void> _handlePushNotification() async {
         
         // Handle the push notification using Telnyx SDK
         await telnyxService.handlePushNotification(pushMetaData);
-      } else {
-        print('❌ Failed to parse push metadata');
       }
     } else {
       print('📱 No push metadata found');
@@ -537,36 +646,7 @@ Future<void> _detectCallKitLaunchState() async {
     bool callKitDetected = false;
     
     // Listen for CallKit events briefly to detect launch state
-    final subscription = FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
-      if (event?.event == Event.actionCallAccept) {
-        print('🚀 IMMEDIATE CallKit Accept detected - app launched from CallKit!');
-        _isLaunchingFromCallKitAccept = true;
-        callKitDetected = true;
-        
-        // Extract call info from event
-        final extra = event!.body['extra'];
-        if (extra is Map && extra['metadata'] != null) {
-          try {
-            final metadata = jsonDecode(extra['metadata'] as String);
-            globalCallKitCallInfo = {
-              'call_id': metadata['call_id'] ?? '',
-              'caller_name': metadata['caller_name'] ?? 'Unknown',
-              'caller_number': metadata['caller_number'] ?? 'Unknown',
-              'voice_sdk_id': metadata['voice_sdk_id'] ?? '',
-            };
-            print('📞 CallKit launch call info: ${globalCallKitCallInfo!["caller_name"]}');
-          } catch (e) {
-            print('❌ Error parsing CallKit launch metadata: $e');
-          }
-        }
-      }
-    });
-    
-    // Wait briefly to see if we get an immediate CallKit event (killed state launch)
-    await Future.delayed(const Duration(milliseconds: 200));
-    
-    // Cancel the subscription
-    subscription.cancel();
+    // CallKit launch detection is now handled in the main listener
     
     // Check both plugin events and native method call flag
     if (callKitDetected || _isLaunchingFromCallKitAccept) {
@@ -582,6 +662,19 @@ Future<void> _detectCallKitLaunchState() async {
 }
 
 Future<void> _requestPermissions() async {
+  // CRITICAL: Request microphone permission on iOS at startup
+  if (Platform.isIOS) {
+    print('🔐 Requesting iOS microphone permission...');
+    final micStatus = await Permission.microphone.request();
+    print('🔐 iOS Microphone permission: $micStatus');
+    
+    if (micStatus != PermissionStatus.granted) {
+      print('⚠️ Microphone permission not granted - audio will not work!');
+    } else {
+      print('✅ Microphone permission granted at startup');
+    }
+  }
+  
   if (Platform.isAndroid) {
     print('🔐 Requesting Android permissions...');
     
@@ -653,13 +746,13 @@ class _TelnyxAppState extends State<TelnyxApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Adit Telnyx',
+      title: 'Adit Call App',
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       theme: AppTheme.darkTheme,
       initialRoute: _isLaunchingFromCallKitAccept ? '/call' : '/',
       routes: {
-        '/': (_) => const HomePage(),
+        '/': (_) => const SimpleHomeScreen(),
         '/call': (_) => const CallPage(),
       },
     );
@@ -675,13 +768,19 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   String _status = 'Disconnected';
   String? _lastPushTokenSent;
   bool _isReconnecting = false;
-  bool _hasReconnectedWithVoipToken = false;
+  // Track whether client has been initialized to avoid late-init checks
+  bool _isClientInitialized = false;
+  // Store latest VoIP token received
+  String? _voipToken;
   
   // Offline mode for push notifications (Telnyx requirement)
   bool _isOfflineMode = false;
   
   // Track if we're handling a push call
   bool _isPushCallInProgress = false;
+  
+  // Track if app has been paused before (to distinguish startup from resume)
+  bool _hasBeenPausedBefore = false;
   
   // Store pending CallKit accepted call info
   Map<String, dynamic>? _pendingAcceptedCall;
@@ -696,9 +795,6 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   
   // Track Voice SDK ID
   String? _voiceSdkId;
-  
-  // Store VoIP token for push notifications
-  String? _voipToken;
   
   // Call state monitoring
   Timer? _callStateMonitor;
@@ -721,19 +817,27 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     _voipToken = token;
-    _hasReconnectedWithVoipToken = false;
-    print('📱 VoIP token updated: ${token.substring(0, 20)}...');
+    print('📱 VoIP token updated: ${abbreviate(token)}...');
     
     // CRITICAL: Explicitly set push token with Telnyx SDK
     _setPushTokenForTelnyx(token);
     
-    _reconnectWithVoipToken();
+    // CRITICAL FIX: Only reconnect if we're NOT already connected/connecting
+    // During app startup, _initialize() is already connecting - don't create duplicate!
+    if (_telnyxClient.isConnected()) {
+      print('📱 Already connected - reconnecting with new VoIP token...');
+      _reconnectWithVoipToken();
+    } else {
+      print('📱 Not yet connected - VoIP token will be used on next connection');
+      // The token is stored in _voipToken and will be used automatically
+      // when _reconnectWebSocket() or _initialize() creates the connection
+    }
   }
   
   // Explicitly set push token with Telnyx SDK (Telnyx requirement)
   void _setPushTokenForTelnyx(String token) {
     try {
-      print('📱 Setting push token with Telnyx SDK: ${token.substring(0, 20)}...');
+      print('📱 Setting push token with Telnyx SDK: ${abbreviate(token)}...');
       
       // CRITICAL: Determine APNS environment based on iOS entitlements
       // Your Runner.entitlements shows "development" so we use sandbox
@@ -890,6 +994,9 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   TelnyxService() {
     WidgetsBinding.instance.addObserver(this);
     _appLifecycleState = WidgetsBinding.instance.lifecycleState;
+    // Store global reference for killed-state VoIP access
+    _globalTelnyxService = this;
+    print('📱 TelnyxService singleton instance created');
     _initialize();
   }
   
@@ -910,7 +1017,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
       if (Platform.isAndroid) {
         try {
           fcmToken = await fb_msg.FirebaseMessaging.instance.getToken();
-          print('🤖 FCM Token (Android): ${fcmToken?.substring(0, 20)}...');
+          print('🤖 FCM Token (Android): ${abbreviate(fcmToken)}...');
         } catch (e) {
           print('❌ Error getting FCM token (Android): $e');
         }
@@ -919,12 +1026,12 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     // Use VoIP token for push notifications if available, otherwise fallback to FCM
     String? notificationToken = Platform.isIOS ? (_voipToken ?? globalVoipToken) : (fcmToken ?? _voipToken ?? globalVoipToken);
     if (Platform.isIOS && _voipToken != null) {
-      print('📱 Using stored VoIP token for push notifications: ${_voipToken!.substring(0, 20)}...');
+      print('📱 Using stored VoIP token for push notifications: ${abbreviate(_voipToken)}...');
     } else if (Platform.isIOS && globalVoipToken != null) {
-      print('📱 Using global VoIP token for push notifications: ${globalVoipToken!.substring(0, 20)}...');
+      print('📱 Using global VoIP token for push notifications: ${abbreviate(globalVoipToken)}...');
       _voipToken = globalVoipToken; // Store it for future use
     } else if (Platform.isAndroid) {
-      print('🤖 Using FCM token for push notifications: ${fcmToken?.substring(0, 20)}...');
+      print('🤖 Using FCM token for push notifications: ${abbreviate(fcmToken)}...');
     }
     
     // If we have a VoIP token, we'll reconnect with it after initial connection
@@ -944,13 +1051,21 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         customLogger: MyCustomLogger(),
       );
       
-      _telnyxClient = TelnyxClient();
+      // CRITICAL: Create TelnyxClient ONCE - singleton pattern
+      if (!_isClientInitialized) {
+        _telnyxClient = TelnyxClient();
+        
+        // Set up event listeners
+        _telnyxClient.onSocketMessageReceived = _handleSocketMessage;
+        _telnyxClient.onSocketErrorReceived = _handleSocketError;
+        
+        _isClientInitialized = true;
+        print('🔧 TelnyxClient created and initialized (singleton)');
+      } else {
+        print('🔧 Using existing TelnyxClient instance (singleton)');
+      }
       
-      // Set up event listeners
-      _telnyxClient.onSocketMessageReceived = _handleSocketMessage;
-      _telnyxClient.onSocketErrorReceived = _handleSocketError;
-      
-      // Connect
+      // Connect (or reconnect) with credentials
       _status = 'Connecting...';
       notifyListeners();
       
@@ -993,8 +1108,7 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         _isConnected = true;
         _status = 'Connected';
         // Store the Voice SDK ID from the message
-        if (message.message is ReceivedMessage) {
-          final receivedMessage = message.message as ReceivedMessage;
+        if (message.message case ReceivedMessage receivedMessage) {
           _voiceSdkId = receivedMessage.voiceSdkId;
           print('📱 Stored Voice SDK ID: $_voiceSdkId');
         }
@@ -1009,30 +1123,30 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
         
       case SocketMethod.invite:
         // Handle incoming call invitation
-        if (message.message is ReceivedMessage) {
-          final receivedMessage = message.message as ReceivedMessage;
+        if (message.message case ReceivedMessage receivedMessage) {
           if (receivedMessage.inviteParams != null) {
             if (_isPushCallInProgress) {
-              // For CallKit accepted calls, create the call object with handler
-              print('📞 CallKit call connected - creating call object');
+              // For CallKit accepted calls, accept the call first
+              print('📞 CallKit call connected - accepting call');
               _incomingInvite = receivedMessage.inviteParams!;
               
-              // Create call object with CallHandler for state changes
-              _call = Call(
-                _telnyxClient.txSocket, 
-                _telnyxClient, 
-                _telnyxClient.sessid,
-                '', // ringtone path
-                '', // ringback path
-                CallHandler((state) {
-                  print('📞 CallKit call state changed: $state');
-                  _handleCallStateChange(state);
-                }, null),
-                () {}, // callEnded callback
-                false, // debug
+              // CRITICAL: Accept the call immediately for CallKit
+              print('📞 Accepting CallKit call...');
+              final acceptedCall = _telnyxClient.acceptCall(
+                _incomingInvite!,
+                _callerIdName,
+                _callerIdNumber,
+                "callkit_call_accepted",
               );
-              _call!.callId = _incomingInvite!.callID;
-              _call!.callState = CallState.ringing;
+              
+              // CRITICAL: Attach our state change handler to the accepted call
+              acceptedCall.callHandler = CallHandler((state) {
+                print('📞 CallKit call state changed: $state');
+                _handleCallStateChange(state);
+              }, null);
+              
+              _call = acceptedCall;
+              print('✅ CallKit call accepted with state handler attached');
               
               // Start call state monitoring for CallKit calls
               _startCallStateMonitoring();
@@ -1044,10 +1158,10 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
                 });
               }
               
-              // Don't show incoming call UI, just process the connection
-              // Navigate to call screen when CallKit call is established
-              _navigateToCallScreen();
-    } else {
+              // Navigation to call screen now happens immediately when CallKit accept is pressed
+              // (see _handleCallKitAccept), not here when INVITE arrives
+              print('✅ Call processing complete - screen already showing');
+            } else {
               _handleIncomingCall(receivedMessage.inviteParams!);
             }
           }
@@ -1073,8 +1187,15 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
   void _handleIncomingCall(IncomingInviteParams inviteParams) {
     print('📞 Incoming call from: ${inviteParams.callerIdNumber}');
     
-    // Reset push call state for new incoming calls
-    _isPushCallInProgress = false;
+    // Reset push call state only for foreground incoming calls. In background
+    // (VoIP push) flows we keep it true so the first INVITE is auto-accepted
+    // and Flutter won't show duplicate CallKit UI.
+    final bool isBackground = _appLifecycleState == AppLifecycleState.paused ||
+        _appLifecycleState == AppLifecycleState.inactive ||
+        _appLifecycleState == AppLifecycleState.hidden;
+    if (!isBackground) {
+      _isPushCallInProgress = false;
+    }
     
     _incomingInvite = inviteParams;
     _status = 'Incoming call from ${inviteParams.callerIdNumber}';
@@ -1083,21 +1204,195 @@ class TelnyxService extends ChangeNotifier with WidgetsBindingObserver {
     print('📱 App lifecycle state: $_appLifecycleState');
     
     // Only show CallKit for true background state (not just paused)
-    if (_appLifecycleState == AppLifecycleState.paused) {
+    if (_appLifecycleState == AppLifecycleState.paused ||
+        _appLifecycleState == AppLifecycleState.inactive ||
+        _appLifecycleState == AppLifecycleState.hidden) {
       // App is in background - show CallKit notification only if not already showing
       print('📱 App in background - showing CallKit notification');
-      _isPushCallInProgress = true; // Set this only for background calls
-      _showCallKitForIncomingCall(inviteParams);
-    } else {
-      // App is in foreground - show in-app UI
-      print('📱 App in foreground - showing in-app UI');
-      // Navigate to home page to show incoming call banner
-      if (navigatorKey.currentState?.canPop() == true) {
-        navigatorKey.currentState!.popUntil((route) => route.isFirst);
+      if (_isPushCallInProgress) {
+        print('ℹ️ CallKit already shown by iOS - skipping duplicate CallKit display');
+      } else {
+        _isPushCallInProgress = true; // Set this only for background calls
+        _showCallKitForIncomingCall(inviteParams);
       }
+    } else {
+      // App is in foreground - show in-app dialog
+      print('📱 App in foreground - showing in-app incoming call dialog');
+      _showIncomingCallDialog(inviteParams);
     }
     
     notifyListeners();
+  }
+  
+  /// Show incoming call dialog when app is in foreground
+  void _showIncomingCallDialog(IncomingInviteParams inviteParams) {
+    final context = navigatorKey.currentContext;
+    if (context == null) {
+      print('❌ No context available for showing incoming call dialog');
+      return;
+    }
+    
+    // Dynamically import the dialog widget
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        // Import the widget class dynamically
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF2C3E50),
+                  Color(0xFF34495E),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Call icon
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3498DB),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF3498DB).withOpacity(0.4),
+                        blurRadius: 15,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.phone_in_talk,
+                    size: 40,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Incoming Call',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  inviteParams.callerIdName ?? 'Unknown Caller',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  inviteParams.callerIdNumber ?? 'Unknown Number',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 16,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Decline button
+                    _buildIncomingCallButton(
+                      icon: Icons.call_end,
+                      label: 'Decline',
+                      color: const Color(0xFFE74C3C),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        declineCall();
+                      },
+                    ),
+                    // Accept button
+                    _buildIncomingCallButton(
+                      icon: Icons.call,
+                      label: 'Accept',
+                      color: const Color(0xFF2ECC71),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        acceptCall();
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+  
+  Widget _buildIncomingCallButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(40),
+            child: Container(
+              width: 65,
+              height: 65,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
   }
   
   /// Show CallKit notification for incoming call when app is in background
@@ -1212,7 +1507,7 @@ void _setupFirebaseMessaging() {
         }
       }
       if (notificationToken != null) {
-        print('📱 Using VoIP token for push handling: ${notificationToken.substring(0, 20)}...');
+        print('📱 Using VoIP token for push handling: ${abbreviate(notificationToken)}...');
       }
       
       // Create credential config
@@ -1254,41 +1549,24 @@ void _setupFirebaseMessaging() {
       
       switch (event.event) {
         case Event.actionCallIncoming:
-          // Handle incoming call - retrieve push metadata from extras
-          print('📱 CallKit incoming call event');
-          try {
-            final extra = event.body['extra'];
-            Map<String, dynamic>? extraMap =
-                extra is Map ? Map<String, dynamic>.from(extra) : null;
-            if (extraMap != null && extraMap['metadata'] != null) {
-              final metaVal = extraMap['metadata'];
-              final Map<String, dynamic> metadata = metaVal is String
-                  ? Map<String, dynamic>.from(jsonDecode(metaVal))
-                  : Map<String, dynamic>.from(metaVal as Map);
-              final pushMetaData = PushMetaData.fromJson(metadata);
-              await handlePushNotification(pushMetaData);
-            }
-          } catch (e) {
-            print('❌ Error handling incoming call metadata: $e');
-          }
+          // Handle incoming call - just log, don't process yet
+          print('📱 CallKit incoming call event - waiting for user action');
           break;
         case Event.actionCallAccept:
           // This handles runtime CallKit accept (when app is already running in background)
-          print('🚀 Runtime CallKit Accept - navigating to call screen');
+          print('🚀 Runtime CallKit Accept - processing call');
           await _handleCallKitAccept(event);
-          // Navigate to call screen immediately
-          _navigateToCallScreen();
+          // DON'T navigate here - wait for call to become ACTIVE, then navigate
+          // This prevents double navigation and ensures smooth transition
           break;
         case Event.actionCallDecline:
           await _handleCallKitDecline(event);
           break;
         case Event.actionCallEnded:
           print('📱 CallKit call ended event received');
-          // Don't call endCall() here as it's already handled by _handleCallStateChange
-          // Just ensure notifications are cleared
-          FlutterCallkitIncoming.endAllCalls().catchError((e) {
-            print('⚠️ Error clearing CallKit notifications in event handler: $e');
-          });
+          // End the call immediately when CallKit reports end
+          // This handles user-initiated end from lock screen or CallKit UI
+          await endCall();
           break;
         default:
           break;
@@ -1300,8 +1578,8 @@ void _setupFirebaseMessaging() {
   void _navigateToCallScreen() {
     print('🧨 Navigating to call screen...');
     try {
-      // Small delay to ensure the app is fully ready for navigation
-      Future.delayed(const Duration(milliseconds: 500), () {
+      // Minimal delay to ensure CallKit UI has dismissed (WhatsApp-style instant navigation)
+      Future.delayed(const Duration(milliseconds: 100), () {
         final navigatorState = navigatorKey.currentState;
         if (navigatorState != null) {
           // First, check if we're already on the call screen
@@ -1327,72 +1605,281 @@ void _setupFirebaseMessaging() {
     print('✅ CallKit Accept pressed');
     
     try {
-      // Extract metadata from the event
-      final extra = event.body['extra'];
-      final extraMap = extra is Map ? Map<String, dynamic>.from(extra) : null;
+      // DEBUG: Print full event structure
+      print('📋 Event body: ${event.body}');
+      print('📋 Event body type: ${event.body.runtimeType}');
       
-      if (extraMap != null && extraMap['metadata'] != null) {
-        final metaVal = extraMap['metadata'];
-        final Map<String, dynamic> metadata = metaVal is String
-            ? Map<String, dynamic>.from(jsonDecode(metaVal))
-            : Map<String, dynamic>.from(metaVal as Map);
+      // Parse call data - using safe access with proper null handling
+      String callId = '';
+      String callerName = '';
+      String callerNumber = '';
+      String voiceSdkId = '';
+      
+      // Try to get from event.body['extra']['metadata']
+      try {
+        final extra = event.body['extra'];
+        print('📋 extra type: ${extra?.runtimeType}, value: $extra');
         
-        final callId = metadata['call_id'] ?? '';
-        final callerName = metadata['caller_name'] ?? 'Unknown';
-        final callerNumber = metadata['caller_number'] ?? 'Unknown';
-        final voiceSdkId = metadata['voice_sdk_id'] ?? '';
-        
-        print('✅ Accepting call: $callId from $callerName');
-        
-        // Store call info globally for direct launch (WhatsApp style)
-        globalCallKitCallInfo = {
-          'call_id': callId,
-          'caller_name': callerName,
-          'caller_number': callerNumber,
-          'voice_sdk_id': voiceSdkId,
-        };
-        
-        // Set push metadata for Telnyx SDK with isAnswer: true
-        TelnyxClient.setPushMetaData(metadata, isAnswer: true, isDecline: false);
-        print('✅ Push metadata set with isAnswer: true');
-        
-        // Handle the push notification using Telnyx SDK directly
-        final pushMetaData = PushMetaData.fromJson(metadata);
-        await handlePushNotification(pushMetaData);
-        
-        notifyListeners();
+        if (extra != null && extra is Map) {
+          final metadata = extra['metadata'];
+          print('📋 metadata type: ${metadata?.runtimeType}');
+          
+          if (metadata != null && metadata is Map) {
+            callId = (metadata['call_id'] ?? '').toString();
+            callerName = (metadata['caller_name'] ?? '').toString();
+            callerNumber = (metadata['caller_number'] ?? '').toString();
+            voiceSdkId = (metadata['voice_sdk_id'] ?? '').toString();
+            print('📋 Got from metadata: callId=$callId, caller=$callerName');
+          }
+        }
+      } catch (e) {
+        print('⚠️ Error parsing metadata: $e');
       }
-    } catch (e) {
+      
+      // Fallback to root event.body fields with explicit toString calls
+      if (callId.isEmpty) {
+        final id = event.body['id'];
+        final uuid = event.body['uuid'];
+        if (id != null) {
+          callId = id.toString();
+        } else if (uuid != null) {
+          callId = uuid.toString();
+        } else {
+          callId = 'unknown_call_id';
+        }
+      }
+      if (callerName.isEmpty) {
+        final name = event.body['nameCaller'];
+        callerName = name != null ? name.toString() : 'Unknown Caller';
+      }
+      if (callerNumber.isEmpty) {
+        final handle = event.body['handle'];
+        callerNumber = handle != null ? handle.toString() : 'Unknown Number';
+      }
+      if (voiceSdkId.isEmpty) {
+        voiceSdkId = 'default_voice_sdk_id';
+      }
+      
+      print('✅ Final values: callId=$callId, name=$callerName, number=$callerNumber, sdk=$voiceSdkId');
+      
+      final normalized = <String, String>{
+        'call_id': callId,
+        'caller_name': callerName,
+        'caller_number': callerNumber,
+        'voice_sdk_id': voiceSdkId,
+      };
+      print('📋 Metadata: callId=$callId, caller=$callerName, voiceSdkId=$voiceSdkId');
+
+      globalCallKitCallInfo = Map<String, String>.from(normalized);
+
+      final notificationToken = getValidVoipToken();
+      // Include a valid notification token if available to avoid null issues inside SDK
+      final Map<String, String> metadataForSdk = {
+        'call_id': callId.isEmpty ? 'unknown_call_id' : callId,
+        'voice_sdk_id': voiceSdkId.isEmpty ? 'unknown_voice_sdk_id' : voiceSdkId,
+        'caller_name': callerName,
+        'caller_number': callerNumber,
+        if (notificationToken != null) 'notification_token': notificationToken,
+      };
+      if (metadataForSdk['call_id']!.isEmpty || metadataForSdk['voice_sdk_id']!.isEmpty) {
+        print('⚠️ Missing required metadata (call_id/voice_sdk_id). Not calling setPushMetaData. Map=$metadataForSdk');
+      } else {
+        try {
+          print('📞 Setting push metadata with isAnswer=true (safe map): $metadataForSdk');
+          TelnyxClient.setPushMetaData(
+            metadataForSdk,
+            isAnswer: true,
+            isDecline: false,
+          );
+          print('✅ Push metadata set successfully');
+        } catch (e) {
+          print('❌ setPushMetaData threw: $e with map=$metadataForSdk');
+        }
+      }
+
+      print('📞 Creating PushMetaData object...');
+      final pushMetaData = PushMetaData.fromJson(normalized);
+      print('✅ PushMetaData created');
+      
+      // Create credential config for handlePushNotification
+      final config = CredentialConfig(
+        sipUser: _sipUser,
+        sipPassword: _sipPassword,
+        sipCallerIDName: _callerIdName,
+        sipCallerIDNumber: _callerIdNumber,
+        notificationToken: notificationToken,
+        debug: true,
+        logLevel: LogLevel.all,
+        customLogger: MyCustomLogger(),
+      );
+      
+      // CRITICAL: Only reconnect if we truly need to switch voice_sdk_id.
+      // In background/killed flows, we may have pre-connected with the correct voice_sdk_id
+      // from the VoIP push already. The CallKit accept event can sometimes carry a
+      // placeholder like "default"; in that case, KEEP the existing connection.
+      final normalizedVoiceId = (voiceSdkId).toString().trim();
+      final bool isDefaultVoiceId = normalizedVoiceId.isEmpty ||
+          normalizedVoiceId == 'default' ||
+          normalizedVoiceId == 'default_voice_sdk_id';
+      final String? currentVoiceId = _voiceSdkId;
+      final bool isConnected = _telnyxClient.isConnected();
+      print('🔎 Connection check: isConnected=$isConnected, currentVoiceId="$currentVoiceId", pushVoiceId="$normalizedVoiceId"');
+
+      if (isDefaultVoiceId) {
+        // Accept event didn't include a real voice_sdk_id; rely on the existing connection
+        print('ℹ️ Push metadata has default/missing voice_sdk_id - keeping existing connection.');
+        print('✅ SKIPPING RECONNECT - will wait for INVITE on existing connection');
+      } else if (isConnected && currentVoiceId == normalizedVoiceId) {
+        // We are already connected on the correct voice_sdk_id
+        print('✅ Already connected with MATCHING voice_sdk_id - no reconnect needed.');
+        print('✅ SKIPPING RECONNECT - will wait for INVITE on existing connection');
+      } else {
+        // We need to connect (or switch) to the correct voice_sdk_id
+        if (isConnected) {
+          print('♻️ Connected with DIFFERENT voice_sdk_id - reconnecting with push voice_sdk_id');
+          print('   Disconnecting from: "$currentVoiceId"');
+          print('   Reconnecting with: "$normalizedVoiceId"');
+          _telnyxClient.disconnect();
+          await Future.delayed(const Duration(milliseconds: 300));
+        } else {
+          print('📞 Not connected - connecting with push voice_sdk_id: "$normalizedVoiceId"');
+        }
+        print('📞 Calling handlePushNotification to establish connection...');
+        try {
+          _telnyxClient.handlePushNotification(pushMetaData, config, null);
+          print('✅ Push notification handled - connecting with voice_sdk_id: $normalizedVoiceId');
+          _voiceSdkId = normalizedVoiceId; // Track it
+        } catch (e) {
+          print('❌ handlePushNotification threw: $e');
+        }
+      }
+      
+      print('🔍 DEBUG: About to set call in progress state...');
+      
+      // Set call in progress state
+      _isPushCallInProgress = true;
+      _status = 'Connecting to call...';
+
+      // If INVITE already arrived before Accept event was processed, accept it immediately
+      if (_incomingInvite != null && _call == null) {
+        try {
+          print('📞 CallKit accept - INVITE already present, accepting immediately');
+          final acceptedCall = _telnyxClient.acceptCall(
+            _incomingInvite!,
+            _callerIdName,
+            _callerIdNumber,
+            "callkit_call_accepted",
+          );
+          acceptedCall.callHandler = CallHandler((state) {
+            print('📞 CallKit call state changed: $state');
+            _handleCallStateChange(state);
+          }, null);
+          _call = acceptedCall;
+          _startCallStateMonitoring();
+          if (Platform.isAndroid) {
+            Future.delayed(const Duration(milliseconds: 500), () {
+              _forceAndroidAudioOutput();
+            });
+          }
+          print('✅ Accepted pre-received INVITE on CallKit accept');
+        } catch (e) {
+          print('❌ Error accepting pre-received INVITE: $e');
+        }
+      }
+      
+      print('🔍 DEBUG: Call in progress state set, about to navigate...');
+      
+      // CRITICAL FIX: Navigate to call screen IMMEDIATELY (WhatsApp-style)
+      // Don't wait for INVITE - show connecting state instantly for better UX
+      print('🚀 Navigating to call screen immediately...');
+      _navigateToCallScreen();
+      
+      print('🔍 DEBUG: Navigation called, about to notify listeners...');
+      
+      notifyListeners();
+    } catch (e, stackTrace) {
       print('❌ Error handling CallKit accept: $e');
+      print('📍 Stack trace: $stackTrace');
     }
   }
   
-  // Handle CallKit decline event
+  // Handle CallKit decline event - INSTANT DECLINE (WhatsApp-style)
   Future<void> _handleCallKitDecline(CallEvent event) async {
-    print('❌ CallKit Decline pressed');
+    print('❌ CallKit Decline pressed - sending immediate rejection');
     
     try {
-      // Extract metadata from the event
-      final extra = event.body['extra'];
-      final extraMap = extra is Map ? Map<String, dynamic>.from(extra) : null;
+      // Parse call data from CallKit event (same as accept)
+      String callId = '';
+      String callerName = '';
+      String callerNumber = '';
+      String voiceSdkId = '';
       
-      if (extraMap != null && extraMap['metadata'] != null) {
-        final metaVal = extraMap['metadata'];
-        final Map<String, dynamic> metadata = metaVal is String
-            ? Map<String, dynamic>.from(jsonDecode(metaVal))
-            : Map<String, dynamic>.from(metaVal as Map);
-        
-        // Set push metadata for Telnyx SDK with isDecline: true
-        TelnyxClient.setPushMetaData(metadata, isAnswer: false, isDecline: true);
-        print('✅ Push metadata set with isDecline: true');
-        
-        // Handle the push notification using Telnyx SDK (simplified decline)
-        final pushMetaData = PushMetaData.fromJson(metadata);
-        await handlePushNotification(pushMetaData);
+      // Try to get from event.body['extra']['metadata'] (Map)
+      final extra = event.body['extra'];
+      if (extra is Map) {
+        final metadata = extra['metadata'];
+        if (metadata is Map) {
+          callId = metadata['call_id']?.toString() ?? '';
+          callerName = metadata['caller_name']?.toString() ?? '';
+          callerNumber = metadata['caller_number']?.toString() ?? '';
+          voiceSdkId = metadata['voice_sdk_id']?.toString() ?? '';
+        }
       }
       
+      // Fallback to root event.body fields with explicit toString calls
+      if (callId.isEmpty) {
+        final id = event.body['id'];
+        final uuid = event.body['uuid'];
+        if (id != null) {
+          callId = id.toString();
+        } else if (uuid != null) {
+          callId = uuid.toString();
+        } else {
+          callId = 'unknown_call_id';
+        }
+      }
+      if (callerName.isEmpty) {
+        final name = event.body['nameCaller'];
+        callerName = name != null ? name.toString() : 'Unknown Caller';
+      }
+      if (callerNumber.isEmpty) {
+        final handle = event.body['handle'];
+        callerNumber = handle != null ? handle.toString() : 'Unknown Number';
+      }
+      if (voiceSdkId.isEmpty) {
+        voiceSdkId = 'default_voice_sdk_id';
+      }
+      
+      print('❌ Declining call: $callId from $callerNumber');
+      
+      final normalized = <String, String>{
+        'call_id': callId,
+        'caller_name': callerName,
+        'caller_number': callerNumber,
+        'voice_sdk_id': voiceSdkId,
+      };
+      
+      // CRITICAL: Set decline flag BEFORE processing
+      TelnyxClient.setPushMetaData(normalized, isAnswer: false, isDecline: true);
+      print('✅ Push metadata set with isDecline: true');
+      final pushMetaData = PushMetaData.fromJson(normalized);
+      
+      // INSTANT decline - don't wait for connection
+      await handlePushNotification(pushMetaData);
+      
+      // Ensure WebSocket is connected to send decline response
+      if (!_isConnected) {
+        print('🔌 Connecting to send decline response...');
+        await _reconnectWebSocket();
+      }
+      
+      print('✅ Decline message sent to Telnyx');
+      // Ensure UI resets on decline
+      try { await FlutterCallkitIncoming.endAllCalls(); } catch (_) {}
+      _incomingInvite = null; _call = null; _isCallInProgress = false; _isPushCallInProgress = false;
+      navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (r)=>false);
+      
       // Clear incoming call state
-      _incomingInvite = null;
       _status = _isConnected ? 'Connected' : 'Disconnected';
       notifyListeners();
     } catch (e) {
@@ -1549,8 +2036,8 @@ void _setupFirebaseMessaging() {
       _isCallInProgress = true;
       _status = 'Calling $destination...';
       
-      // Start call duration timer
-      _startCallDurationTimer();
+      // Don't start duration timer yet - wait for CallState.active
+      // Timer will start automatically when call connects
       
       // Start call state monitoring
       _startCallStateMonitoring();
@@ -1593,8 +2080,8 @@ void _setupFirebaseMessaging() {
       _isCallInProgress = true;
       _status = 'Call connected';
       
-      // Start call duration timer
-      _startCallDurationTimer();
+      // Don't start duration timer yet - wait for CallState.active
+      // Timer will start automatically when call connects
       
       // Start call state monitoring
       _startCallStateMonitoring();
@@ -1616,13 +2103,13 @@ void _setupFirebaseMessaging() {
     }
   }
   
-  /// Decline an incoming call
+  /// Decline an incoming call - INSTANT DECLINE
   Future<void> declineCall() async {
     try {
-      print('❌ Declining incoming call...');
+      print('❌ Declining incoming call - instant response...');
       
       if (_incomingInvite != null) {
-        // Create a call instance to decline it properly
+        // Create a call instance to decline it properly with immediate SIP response
         final call = Call(
           _telnyxClient.txSocket, 
           _telnyxClient, 
@@ -1630,7 +2117,7 @@ void _setupFirebaseMessaging() {
           '', // ringtone path
           '', // ringback path
           CallHandler((state) {
-            print('📞 Call state changed: $state');
+            print('📞 Decline call state changed: $state');
             _handleCallStateChange(state);
           }, null),
           () {}, // callEnded callback
@@ -1639,44 +2126,50 @@ void _setupFirebaseMessaging() {
         call.callId = _incomingInvite!.callID;
         call.callState = CallState.ringing;
         
-        // Reject the call with proper SIP response
-        call.endCall(); // This will reject with USER_BUSY
-        print('✅ Call rejected with USER_BUSY');
+        // CRITICAL: Send immediate decline (486 BUSY_HERE or 603 DECLINE)
+        call.endCall(); // This sends proper SIP decline response
+        print('✅ Call declined with SIP response sent');
       }
       
-      // Clear incoming call state
+      // Clear incoming call state immediately
       _incomingInvite = null;
+      _call = null;
+      _isCallInProgress = false;
+      _isPushCallInProgress = false;
       _status = _isConnected ? 'Connected' : 'Disconnected';
       
-      // Clear any CallKit notifications
+      // Clear all CallKit notifications
       try {
         await FlutterCallkitIncoming.endAllCalls();
-        print('✅ Cleared CallKit notifications');
+        print('✅ Cleared all CallKit notifications');
       } catch (e) {
         print('⚠️ Error clearing CallKit notifications: $e');
       }
       
-      // Clear any system notifications
-      try {
-        await FlutterCallkitIncoming.endAllCalls();
-          } catch (e) {
-        print('⚠️ Error clearing system notifications: $e');
-      }
+      // Navigate to home immediately
+      navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
       
       notifyListeners();
+      print('✅ Decline completed successfully');
     } catch (e) {
       print('❌ Error declining call: $e');
     }
   }
   
-  /// End the current call
+  /// End the current call - IMMEDIATE END (WhatsApp-style)
   Future<void> endCall() async {
     try {
+      print('📴 Ending call - immediate termination...');
+      
+      // Send BYE message to end the call immediately
       if (_call != null) {
         _call!.endCall();
+        print('✅ Sent BYE to terminate call');
       }
       
+      // Clear all call state immediately
       _call = null;
+      _incomingInvite = null;
       _isCallInProgress = false;
       _isPushCallInProgress = false;
       _status = _isConnected ? 'Connected' : 'Disconnected';
@@ -1687,30 +2180,32 @@ void _setupFirebaseMessaging() {
       // Stop call state monitoring
       _stopCallStateMonitoring();
       
-      // Clear all CallKit notifications
+      // Clear all CallKit notifications with error handling
       try {
         await FlutterCallkitIncoming.endAllCalls();
         print('✅ Cleared all CallKit notifications');
-    } catch (e) {
+      } catch (e) {
         print('⚠️ Error clearing CallKit notifications: $e');
       }
       
       // Reset CallKit launch flag and clear global call info
-      if (_isLaunchingFromCallKitAccept) {
-        _isLaunchingFromCallKitAccept = false;
-        globalCallKitCallInfo = null; // Clear global call info
-        // For CallKit calls, navigate to home instead of popping
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
-      } else {
-        // For regular calls, navigate back to home
-        if (navigatorKey.currentState?.canPop() == true) {
-          navigatorKey.currentState!.popUntil((route) => route.isFirst);
-        }
-      }
+      _isLaunchingFromCallKitAccept = false;
+      globalCallKitCallInfo = null;
+      
+      // Navigate to home screen immediately for smooth UX
+      navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+      print('✅ Navigated to home screen');
       
       notifyListeners();
+      print('✅ Call ended successfully');
     } catch (e) {
       print('❌ Error ending call: $e');
+      // Even on error, try to clean up
+      _call = null;
+      _isCallInProgress = false;
+      _isPushCallInProgress = false;
+      navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+      notifyListeners();
     }
   }
   
@@ -1724,7 +2219,61 @@ void _setupFirebaseMessaging() {
   /// Toggle speaker on active call
   void toggleSpeaker(bool enabled) {
     if (_call != null) {
-      _call!.enableSpeakerPhone(enabled);
+      print('🔊 Toggling speaker: ${enabled ? "ON" : "OFF"}');
+      try {
+        _call!.enableSpeakerPhone(enabled);
+        print('✅ Speaker ${enabled ? "enabled" : "disabled"} successfully');
+      } catch (e) {
+        print('❌ Error toggling speaker: $e');
+      }
+    } else {
+      print('⚠️ Cannot toggle speaker - no active call');
+    }
+  }
+  
+  /// Activate iOS audio session (WebRTC)
+  Future<void> _activateAudioSession() async {
+    if (!Platform.isIOS) return;
+    
+    try {
+      print('🔊 Activating iOS audio session...');
+      await _audioMethodChannel.invokeMethod('activateAudio');
+      print('✅ iOS audio session activated');
+    } catch (e) {
+      print('❌ Error activating audio session: $e');
+    }
+  }
+
+  /// Stabilize iOS audio routing to the earpiece after connect
+  Future<void> _stabilizeIOSAudioRouting() async {
+    if (!Platform.isIOS || _call == null) return;
+    try {
+      // Small staged toggles to overcome CallKit/AVAudioSession race conditions
+      print('🔊 iOS routing: staging toggles to enforce earpiece');
+      await Future.delayed(const Duration(milliseconds: 250));
+      _call!.enableSpeakerPhone(true);
+      await Future.delayed(const Duration(milliseconds: 120));
+      _call!.enableSpeakerPhone(false);
+      // Re-assert after audio session callbacks settle
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _activateAudioSession();
+      _call!.enableSpeakerPhone(false);
+      print('✅ iOS routing stabilized to earpiece');
+    } catch (e) {
+      print('❌ Error stabilizing iOS routing: $e');
+    }
+  }
+  
+  /// Deactivate iOS audio session (WebRTC)
+  Future<void> _deactivateAudioSession() async {
+    if (!Platform.isIOS) return;
+    
+    try {
+      print('🔇 Deactivating iOS audio session...');
+      await _audioMethodChannel.invokeMethod('deactivateAudio');
+      print('✅ iOS audio session deactivated');
+    } catch (e) {
+      print('❌ Error deactivating audio session: $e');
     }
   }
   
@@ -1835,21 +2384,135 @@ void _setupFirebaseMessaging() {
   
   /// Ensure connection is active when app resumes
   void _ensureConnectionActive() {
-    if (!_isConnected && _telnyxClient != null) {
-      print('🔄 Reconnecting after app resume...');
-      // Reconnect if needed
+    // Turn off offline mode when app comes to foreground
+    _isOfflineMode = false;
+    print('📱 App resumed - offline mode disabled, VoIP pushes will stop');
+    
+    // CRITICAL FIX: Don't reconnect if we're already handling a push call
+    // The CallKit flow already handles connection for incoming calls
+    if (_isPushCallInProgress) {
+      print('📱 Push call in progress - skipping reconnect, CallKit handling connection');
+      return;
+    }
+    
+    // CRITICAL FIX: Only reconnect if we've been paused before
+    // This prevents reconnecting during initial app startup (which creates duplicates)
+    if (!_hasBeenPausedBefore) {
+      print('📱 First resume (app startup) - skipping reconnect, initial connection in progress');
+      return;
+    }
+    
+    // Check SDK's real-time connection status
+    if (!_telnyxClient.isConnected()) {
+      print('🔄 WebSocket not connected - reconnecting automatically...');
       _status = 'Reconnecting...';
+      notifyListeners();
+      
+      // Automatically reconnect when app resumes from background (WhatsApp-style)
+      _reconnectWebSocket();
+    } else {
+      print('✅ WebSocket already connected - ready for calls');
+    }
+  }
+
+  /// Set up socket listeners for TelnyxClient
+  void _setupSocketListeners() {
+    _telnyxClient.onSocketMessageReceived = _handleSocketMessage;
+    _telnyxClient.onSocketErrorReceived = _handleSocketError;
+    print('🔧 Socket listeners set up for TelnyxClient');
+  }
+
+  /// Reconnect WebSocket for incoming calls - INSTANT CONNECTION (WhatsApp-style)
+  /// [voiceSdkId] - Optional voice_sdk_id from VoIP push to ensure INVITE routing
+  Future<void> _reconnectWebSocket() async {
+    try {
+      print('🔌 [INSTANT] Reconnecting WebSocket...');
+      
+      // CRITICAL: Disable offline mode when reconnecting
+      _isOfflineMode = false;
+      
+      // Initialize TelnyxClient if not yet initialized (covers killed state)
+      if (!_isClientInitialized) {
+        print('🔧 Initializing TelnyxClient (first-time or killed state)...');
+        _telnyxClient = TelnyxClient();
+        _setupSocketListeners();
+        _isClientInitialized = true;
+      }
+      
+      if (!_isConnected) {
+        // Disconnect first to ensure clean state
+        if (_telnyxClient.isConnected()) {
+          _telnyxClient.disconnect();
+        }
+        
+        final config = CredentialConfig(
+          sipUser: _sipUser,
+          sipPassword: _sipPassword,
+          sipCallerIDName: _callerIdName,
+          sipCallerIDNumber: _callerIdNumber,
+          notificationToken: getValidVoipToken(), // CRITICAL: Include VoIP token
+          debug: true,
+          logLevel: LogLevel.all,
+          customLogger: MyCustomLogger(),
+        );
+        
+        // Note: For push-based reconnections (VoIP push), we now use handlePushNotification
+        // which connects with the correct voice_sdk_id from the push metadata
+        // This method is only for manual/foreground reconnections
+        _telnyxClient.connectWithCredential(config);
+        
+        _status = 'Reconnecting...';
+        print('✅ [INSTANT] WebSocket reconnection initiated - NOT waiting, processing immediately');
+        notifyListeners();
+        
+        // CRITICAL FIX: DO NOT WAIT for connection!
+        // The SDK will handle the INVITE message when it arrives.
+        // WhatsApp-style: Start connection immediately, handle call as soon as INVITE arrives
+        // This eliminates the 5-second delay that was causing gateway timeouts.
+        
+      } else if (_isConnected) {
+        print('✅ WebSocket already connected - ready for incoming call');
+      }
+    } catch (e) {
+      print('❌ Error reconnecting WebSocket: $e');
+      _isConnected = false;
+      _status = 'Connection failed';
       notifyListeners();
     }
   }
   
   /// Handle app going to background
   void _handleAppPaused() {
-    print('📱 App paused - maintaining WebSocket connection for background calls');
-    // The WebSocket connection should remain active for background calls
-    // No need to disconnect, just ensure it stays connected
-    if (_telnyxClient.isConnected()) {
-      print('✅ WebSocket connection maintained for background state');
+    // If we're in the middle of a push-call flow, DO NOT tear down the socket.
+    // CallKit/PushKit flow needs the active WebSocket to complete answer/ICE.
+    if (_isPushCallInProgress) {
+      print('📵 Push call in progress - skipping WebSocket destroy on background');
+      return;
+    }
+    print('📱 App paused - DESTROYING WebSocket to force VoIP push notifications');
+    // CRITICAL: We MUST completely destroy the WebSocket when backgrounded so that Telnyx
+    // will send VoIP push notifications for incoming calls.
+    // 
+    // Telnyx's server logic:
+    // - IF WebSocket is connected → Send INVITE over WebSocket only (no push)
+    // - IF WebSocket is disconnected → Send VoIP push notification
+    // 
+    // The Telnyx SDK auto-reconnects after disconnect(), so we must destroy the client entirely.
+    
+    // Track that we've been paused (so we know to reconnect on resume)
+    _hasBeenPausedBefore = true;
+    
+    // Set offline mode flag
+    _isOfflineMode = true;
+    
+    try {
+      print('🔌 Disconnecting WebSocket...');
+      _telnyxClient.disconnect();
+      _isConnected = false;
+      print('✅ WebSocket disconnected - VoIP pushes will now be sent');
+      notifyListeners();
+    } catch (e) {
+      print('⚠️ Error disconnecting WebSocket: $e');
     }
   }
   
@@ -1883,6 +2546,12 @@ void _setupFirebaseMessaging() {
     switch (state) {
       case CallState.done:
         print('📞 Call ended - cleaning up');
+        
+        // Deactivate audio session on iOS
+        if (Platform.isIOS) {
+          _deactivateAudioSession();
+        }
+        
         _isCallInProgress = false;
         _isPushCallInProgress = false;
         _call = null;
@@ -1913,8 +2582,47 @@ void _setupFirebaseMessaging() {
         break;
       case CallState.active:
         print('📞 Call connected');
-        _isCallInProgress = true;
-        _status = 'Call connected';
+        
+        // Only navigate if not already in progress and not already on call screen
+        if (!_isCallInProgress) {
+          _isCallInProgress = true;
+          _status = 'Call connected';
+          
+          // CRITICAL: Start call duration timer when call becomes active
+          print('⏱️ Call active - starting duration timer');
+          _startCallDurationTimer();
+          
+          // CRITICAL: Activate audio session on iOS FIRST
+          if (Platform.isIOS) {
+            _activateAudioSession();
+          }
+          
+          // Fix audio routing: ensure audio goes to earpiece by default, not speaker
+          if (_call != null) {
+            print('🔊 Setting audio to earpiece (disabling speaker)...');
+            _call!.enableSpeakerPhone(false);
+            print('✅ Audio routing configured for earpiece');
+            // Stabilize routing with delayed reassertions on iOS
+            _stabilizeIOSAudioRouting();
+          }
+          
+          // Navigate to call screen ONLY once per call
+          Future.delayed(const Duration(milliseconds: 300), () {
+            final navigatorState = navigatorKey.currentState;
+            if (navigatorState != null) {
+              final currentRoute = ModalRoute.of(navigatorState.context)?.settings.name;
+              if (currentRoute != '/call') {
+                navigatorState.pushNamed('/call');
+                print('✅ Navigated to call screen on ACTIVE state');
+              } else {
+                print('✅ Already on call screen');
+              }
+            }
+          });
+        } else {
+          print('✅ Call already in progress - skipping navigation');
+        }
+        
         notifyListeners();
         break;
       case CallState.ringing:
@@ -2404,10 +3112,7 @@ class _CallPageState extends State<CallPage> {
     return 'Connecting...';
   }
   
-  bool _shouldShowCallControls(TelnyxService service) {
-    // Show controls if we have an active call or we're in a CallKit call
-    return service.isCallInProgress || _isLaunchingFromCallKitAccept || service.call != null;
-  }
+  // Removed unused _shouldShowCallControls helper
   
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, "0");

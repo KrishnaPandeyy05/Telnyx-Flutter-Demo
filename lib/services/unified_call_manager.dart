@@ -276,24 +276,17 @@ class UnifiedCallManager extends ChangeNotifier {
   
   /// Get call display number
   String get callDisplayNumber {
-    if (_activeCall != null) {
-      return _activeCall!.sessionDestinationNumber ?? 'Unknown';
-    }
-    if (_incomingInvite != null) {
-      return _incomingInvite!.callerIdNumber ?? 'Unknown';
-    }
-    return 'Unknown';
+    return _activeCall?.sessionDestinationNumber ?? 
+           _incomingInvite?.callerIdNumber ?? 
+           'Unknown';
   }
   
   /// Get call display name
   String get callDisplayName {
-    if (_incomingInvite != null) {
-      return _incomingInvite!.callerIdName ?? _incomingInvite!.callerIdNumber ?? 'Unknown';
-    }
-    if (_activeCall != null) {
-      return _activeCall!.sessionDestinationNumber ?? 'Unknown';
-    }
-    return 'Unknown';
+    return _incomingInvite?.callerIdName ?? 
+           _incomingInvite?.callerIdNumber ?? 
+           _activeCall?.sessionDestinationNumber ?? 
+           'Unknown';
   }
   
   /// Dispose resources

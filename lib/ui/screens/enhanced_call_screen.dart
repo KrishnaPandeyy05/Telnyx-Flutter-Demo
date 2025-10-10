@@ -197,20 +197,36 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
           
           const SizedBox(height: 20),
           
-          // Call status
+          // Call status with loading indicator
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Text(
-              _getCallStatusText(service),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!service.isCallInProgress) ...[
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  _getCallStatusText(service),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
           
@@ -496,6 +512,7 @@ class _EnhancedCallScreenState extends State<EnhancedCallScreen>
   String _getCallStatusText(TelnyxService service) {
     if (_isOnHold) return 'On Hold';
     if (service.isCallInProgress) return 'Connected';
+    // Show connecting state with animated dots for smooth UX
     return 'Connecting...';
   }
 

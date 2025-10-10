@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../main.dart';
 import '../theme/app_theme.dart';
-import '../widgets/incoming_call_overlay.dart';
 import '../widgets/static_waveform_widget.dart';
 
 class EnhancedHomeScreen extends StatefulWidget {
